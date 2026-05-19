@@ -1,0 +1,18 @@
+# Next.js
+app/.next/
+app/out/
+app/build/
+
+# Dependencies
+app/node_modules/
+
+# Environment variables (보안 - 절대 커밋하지 마세요)
+app/.env.local
+app/.env*.local
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
