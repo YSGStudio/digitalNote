@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
-import { Classroom, ClassroomDevice } from '@/types'
+import { Classroom, ClassroomDevice, Device } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 
@@ -26,10 +26,18 @@ export default function AdminClassroomsPage() {
   const [saveError, setSaveError] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
 
+  // 기기 편집 관련
+  const [allDevices, setAllDevices] = useState<Device[]>([])
+  const [quantities, setQuantities] = useState<Record<string, number>>({})
+  const [editMode, setEditMode] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+  const [devicesLoading, setDevicesLoading] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
-    const [{ data: rooms }, { data: allDevices }] = await Promise.all([
+    const [{ data: rooms }, { data: allDevs }] = await Promise.all([
       supabase.from('classrooms').select('*').order('class_name'),
       supabase
         .from('classroom_devices')
@@ -37,9 +45,8 @@ export default function AdminClassroomsPage() {
         .gt('quantity', 0),
     ])
 
-    // 학급별 기기 맵 구성
     const deviceMap: Record<string, DeviceSummary[]> = {}
-    ;(allDevices as unknown as ClassroomDevice[])?.forEach((d) => {
+    ;(allDevs as unknown as ClassroomDevice[])?.forEach((d) => {
       if (!deviceMap[d.classroom_id]) deviceMap[d.classroom_id] = []
       if (d.devices?.device_type) {
         deviceMap[d.classroom_id].push({ device_type: d.devices.device_type, quantity: d.quantity })
@@ -60,6 +67,74 @@ export default function AdminClassroomsPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function openDetail(c: ClassroomWithDevices) {
+    setDetailClassroom(c)
+    setEditMode(false)
+    setEditError('')
+    setDevicesLoading(true)
+
+    const supabase = createClient()
+    const [{ data: devs }, { data: myDevs }] = await Promise.all([
+      supabase.from('devices').select('*').order('device_type'),
+      supabase.from('classroom_devices').select('*').eq('classroom_id', c.id),
+    ])
+
+    const devList = (devs as Device[]) ?? []
+    const myDevList = (myDevs as ClassroomDevice[]) ?? []
+
+    const qMap: Record<string, number> = {}
+    devList.forEach((d) => {
+      const found = myDevList.find((md) => md.device_id === d.id)
+      qMap[d.id] = found?.quantity ?? 0
+    })
+
+    setAllDevices(devList)
+    setQuantities(qMap)
+    setDevicesLoading(false)
+  }
+
+  function closeDetail() {
+    setDetailClassroom(null)
+    setEditMode(false)
+    setEditError('')
+    setAllDevices([])
+    setQuantities({})
+  }
+
+  async function handleEditSave() {
+    if (!detailClassroom) return
+    setEditSaving(true)
+    setEditError('')
+    const supabase = createClient()
+    const upserts = allDevices.map((d) => ({
+      classroom_id: detailClassroom.id,
+      device_id: d.id,
+      quantity: quantities[d.id] ?? 0,
+    }))
+    const { error } = await supabase
+      .from('classroom_devices')
+      .upsert(upserts, { onConflict: 'classroom_id,device_id' })
+
+    if (error) {
+      setEditError(`저장 실패: ${error.message}`)
+      setEditSaving(false)
+      return
+    }
+
+    // 그리드 카드도 갱신
+    await load()
+
+    // 상세 모달의 deviceSummary도 최신화
+    setClassrooms((prev) => {
+      const updated = prev.find((c) => c.id === detailClassroom.id)
+      if (updated) setDetailClassroom(updated)
+      return prev
+    })
+
+    setEditSaving(false)
+    setEditMode(false)
+  }
 
   function openAddModal() {
     setForm({ class_name: '', teacher_name: '' })
@@ -90,7 +165,7 @@ export default function AdminClassroomsPage() {
     setDeleting(id)
     const supabase = createClient()
     await supabase.from('classrooms').delete().eq('id', id)
-    if (detailClassroom?.id === id) setDetailClassroom(null)
+    if (detailClassroom?.id === id) closeDetail()
     setDeleting(null)
     load()
   }
@@ -137,10 +212,10 @@ export default function AdminClassroomsPage() {
           {classrooms.map((c) => (
             <div
               key={c.id}
-              onClick={() => setDetailClassroom(c)}
+              onClick={() => openDetail(c)}
               className="group relative flex cursor-pointer flex-col rounded-xl bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
             >
-              {/* 삭제 버튼 — hover 시 표시 */}
+              {/* 삭제 버튼 */}
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(c.id, c.class_name) }}
                 disabled={deleting === c.id}
@@ -157,7 +232,6 @@ export default function AdminClassroomsPage() {
                 }
               </button>
 
-              {/* 학급명 / 교사명 */}
               <p className="pr-5 text-base font-bold text-gray-900">{c.class_name}</p>
               <p className="mt-0.5 text-xs text-gray-400">
                 {c.teacher_name ? `${c.teacher_name} 선생님` : '담당 교사 미입력'}
@@ -165,7 +239,6 @@ export default function AdminClassroomsPage() {
 
               <div className="my-3 border-t border-gray-100" />
 
-              {/* 기기 요약 */}
               <div className="flex-1">
                 {c.deviceSummary.length === 0 ? (
                   <p className="text-xs text-gray-300">등록된 기기 없음</p>
@@ -184,7 +257,6 @@ export default function AdminClassroomsPage() {
                 )}
               </div>
 
-              {/* 하단 총계 */}
               <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
                 <span className="text-xs text-gray-400">총 기기 수</span>
                 <span className={`text-sm font-bold ${c.totalDevices === 0 ? 'text-gray-300' : 'text-blue-600'}`}>
@@ -196,10 +268,10 @@ export default function AdminClassroomsPage() {
         </div>
       )}
 
-      {/* 상세 모달 */}
+      {/* 상세 / 편집 모달 */}
       <Modal
         open={detailClassroom !== null}
-        onClose={() => setDetailClassroom(null)}
+        onClose={closeDetail}
         title={detailClassroom?.class_name ?? ''}
       >
         {detailClassroom && (
@@ -209,31 +281,81 @@ export default function AdminClassroomsPage() {
                 ? `${detailClassroom.teacher_name} 선생님`
                 : '담당 교사 미입력'}
             </p>
-            {detailClassroom.deviceSummary.length === 0 ? (
-              <p className="py-6 text-center text-sm text-gray-400">교사가 등록한 기기가 없습니다.</p>
+
+            {devicesLoading ? (
+              <div className="space-y-2 py-4">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-9 animate-pulse rounded bg-gray-100" />
+                ))}
+              </div>
+            ) : allDevices.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-400">
+                기기 종류를 먼저 등록해주세요. (기기 종류 설정 메뉴)
+              </p>
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50 text-left text-gray-500">
-                    <th className="px-3 py-2.5 font-medium">기기 종류</th>
-                    <th className="px-3 py-2.5 text-right font-medium">수량</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {detailClassroom.deviceSummary.map((d) => (
-                    <tr key={d.device_type} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5">{d.device_type}</td>
-                      <td className="px-3 py-2.5 text-right font-medium">{d.quantity}대</td>
+              <>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50 text-left text-gray-500">
+                      <th className="px-3 py-2.5 font-medium">기기 종류</th>
+                      <th className="px-3 py-2.5 text-right font-medium">수량</th>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 bg-gray-50 font-semibold">
-                    <td className="px-3 py-2.5 text-gray-700">합계</td>
-                    <td className="px-3 py-2.5 text-right text-blue-600">{detailClassroom.totalDevices}대</td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </thead>
+                  <tbody className="divide-y">
+                    {allDevices.map((d) => (
+                      <tr key={d.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2.5">{d.device_type}</td>
+                        <td className="px-3 py-2.5 text-right">
+                          {editMode ? (
+                            <input
+                              type="number"
+                              min={0}
+                              value={quantities[d.id] ?? 0}
+                              onChange={(e) =>
+                                setQuantities({ ...quantities, [d.id]: parseInt(e.target.value) || 0 })
+                              }
+                              className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-right text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <span className={quantities[d.id] === 0 ? 'font-medium text-gray-300' : 'font-medium text-gray-700'}>
+                              {quantities[d.id] ?? 0}대
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {!editMode && (
+                    <tfoot>
+                      <tr className="border-t-2 bg-gray-50 font-semibold">
+                        <td className="px-3 py-2.5 text-gray-700">합계</td>
+                        <td className="px-3 py-2.5 text-right text-blue-600">
+                          {Object.values(quantities).reduce((s, v) => s + v, 0)}대
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+
+                {editError && (
+                  <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{editError}</p>
+                )}
+
+                <div className="mt-4 flex justify-end gap-2">
+                  {editMode ? (
+                    <>
+                      <Button variant="secondary" onClick={() => { setEditMode(false); setEditError('') }}>
+                        취소
+                      </Button>
+                      <Button loading={editSaving} onClick={handleEditSave}>저장</Button>
+                    </>
+                  ) : (
+                    <Button variant="secondary" onClick={() => setEditMode(true)}>
+                      기기 수량 편집
+                    </Button>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )}
