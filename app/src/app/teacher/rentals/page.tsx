@@ -143,7 +143,7 @@ export default function TeacherRentalsPage() {
                     <td className="px-4 py-3"><Badge label={r.status} /></td>
                     {tab === 'my' && (
                       <td className="px-4 py-3">
-                        {r.status === '대여 중' && r.classroom_id === classroomId && (
+                        {r.status === '대여 중' && (
                           <Button
                             size="sm"
                             variant="secondary"
