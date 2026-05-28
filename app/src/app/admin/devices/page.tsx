@@ -12,6 +12,7 @@ export default function AdminDevicesPage() {
   const [editing, setEditing] = useState<SharedDevice | null>(null)
   const [form, setForm] = useState({ device_name: '', total_quantity: '' })
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -64,6 +65,15 @@ export default function AdminDevicesPage() {
     load()
   }
 
+  async function handleDelete(d: SharedDevice) {
+    if (!window.confirm(`"${d.device_name}"을(를) 삭제하면 관련 대여 이력도 함께 삭제됩니다.\n정말 삭제할까요?`)) return
+    setDeleting(d.id)
+    const supabase = createClient()
+    await supabase.from('shared_devices').delete().eq('id', d.id)
+    setDeleting(null)
+    load()
+  }
+
   async function toggleActive(d: SharedDevice) {
     const supabase = createClient()
     await supabase.from('shared_devices').update({ is_active: !d.is_active }).eq('id', d.id)
@@ -111,6 +121,14 @@ export default function AdminDevicesPage() {
                       <Button size="sm" variant="secondary" onClick={() => openEdit(d)}>수정</Button>
                       <Button size="sm" variant="ghost" onClick={() => toggleActive(d)}>
                         {d.is_active ? '비활성화' : '활성화'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        loading={deleting === d.id}
+                        onClick={() => handleDelete(d)}
+                      >
+                        삭제
                       </Button>
                     </td>
                   </tr>
