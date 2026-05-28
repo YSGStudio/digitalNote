@@ -9,6 +9,7 @@ const repairColors: Record<RepairStatus, string> = {
 
 const rentalColors: Record<RentalStatus, string> = {
   '대여 중': 'bg-orange-100 text-orange-800',
+  '반납 요청 중': 'bg-purple-100 text-purple-800',
   '반납 완료': 'bg-gray-100 text-gray-700',
 }
 

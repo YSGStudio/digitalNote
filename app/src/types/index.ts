@@ -1,5 +1,5 @@
 export type RepairStatus = '접수 대기' | '수리 중' | '처리 완료'
-export type RentalStatus = '대여 중' | '반납 완료'
+export type RentalStatus = '대여 중' | '반납 요청 중' | '반납 완료'
 
 export interface SchoolConfig {
   id: string

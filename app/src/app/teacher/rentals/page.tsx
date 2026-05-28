@@ -20,7 +20,7 @@ export default function TeacherRentalsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState({ device_id: '', quantity: '1' })
   const [submitting, setSubmitting] = useState(false)
-  const [returning, setReturning] = useState<string | null>(null)
+  const [requesting, setRequesting] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   const load = useCallback(async (cid: string) => {
@@ -29,7 +29,7 @@ export default function TeacherRentalsPage() {
       supabase
         .from('rentals')
         .select('*, classrooms(class_name), shared_devices(device_name)')
-        .eq('status', '대여 중')
+        .in('status', ['대여 중', '반납 요청 중'])
         .order('rented_at', { ascending: false }),
       supabase
         .from('rentals')
@@ -82,23 +82,14 @@ export default function TeacherRentalsPage() {
     load(classroomId)
   }
 
-  async function handleReturn(rental: Rental) {
-    setReturning(rental.id)
+  async function handleReturnRequest(rental: Rental) {
+    setRequesting(rental.id)
     const supabase = createClient()
-    const device = sharedDevices.find((d) => d.id === rental.device_id)
-    await Promise.all([
-      supabase
-        .from('rentals')
-        .update({ status: '반납 완료', returned_at: new Date().toISOString() })
-        .eq('id', rental.id),
-      device
-        ? supabase
-            .from('shared_devices')
-            .update({ available_quantity: device.available_quantity + rental.quantity })
-            .eq('id', rental.device_id)
-        : Promise.resolve(),
-    ])
-    setReturning(null)
+    await supabase
+      .from('rentals')
+      .update({ status: '반납 요청 중' })
+      .eq('id', rental.id)
+    setRequesting(null)
     load(classroomId)
   }
 
@@ -156,11 +147,14 @@ export default function TeacherRentalsPage() {
                           <Button
                             size="sm"
                             variant="secondary"
-                            loading={returning === r.id}
-                            onClick={() => handleReturn(r)}
+                            loading={requesting === r.id}
+                            onClick={() => handleReturnRequest(r)}
                           >
-                            반납
+                            반납 요청
                           </Button>
+                        )}
+                        {r.status === '반납 요청 중' && (
+                          <span className="text-xs text-purple-600">반납 요청됨</span>
                         )}
                       </td>
                     )}
