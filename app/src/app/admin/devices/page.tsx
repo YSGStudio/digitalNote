@@ -69,6 +69,8 @@ export default function AdminDevicesPage() {
     if (!window.confirm(`"${d.device_name}"을(를) 삭제하면 관련 대여 이력도 함께 삭제됩니다.\n정말 삭제할까요?`)) return
     setDeleting(d.id)
     const supabase = createClient()
+    // 외래키 제약으로 인해 rentals 먼저 삭제 후 기기 삭제
+    await supabase.from('rentals').delete().eq('device_id', d.id)
     await supabase.from('shared_devices').delete().eq('id', d.id)
     setDeleting(null)
     load()
