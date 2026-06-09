@@ -12,6 +12,7 @@ const navItems = [
   { href: '/admin/device-types', label: '기기 종류 설정', icon: '⚙️' },
   { href: '/admin/devices', label: '공유 기기 관리', icon: '💻' },
   { href: '/admin/rentals', label: '전체 대여 현황', icon: '📋' },
+  { href: '/admin/tutor', label: '튜터 수업 지원', icon: '📚' },
   { href: '/admin/settings', label: '학교 설정', icon: '🏫' },
 ]
 

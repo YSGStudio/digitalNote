@@ -11,6 +11,7 @@ const navItems = [
   { href: '/teacher/my-devices', label: '내 학급 기기', icon: '💻' },
   { href: '/teacher/repair', label: '고장 신고', icon: '🔧' },
   { href: '/teacher/rentals', label: '기기 대여·반납', icon: '📦' },
+  { href: '/teacher/tutor', label: '튜터 수업 지원', icon: '📚' },
 ]
 
 export function TeacherSidebar() {

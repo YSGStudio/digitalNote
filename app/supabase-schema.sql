@@ -87,6 +87,17 @@ create table if not exists rentals (
     check (status in ('대여 중', '반납 요청 중', '반납 완료'))
 );
 
+-- 8. 튜터 수업 지원 신청
+create table if not exists tutor_supports (
+  id uuid primary key default gen_random_uuid(),
+  classroom_id uuid not null references classrooms(id) on delete cascade,
+  support_date date not null,
+  period text not null
+    check (period in ('1교시', '2교시', '3교시', '4교시', '5-1교시', '5-2교시', '6교시')),
+  content text not null,
+  created_at timestamptz default now()
+);
+
 -- ============================================================
 -- RLS (Row Level Security) 설정
 -- ============================================================
@@ -111,6 +122,8 @@ create policy "classroom_devices_all" on classroom_devices for all using (true) 
 create policy "repair_reports_all"   on repair_reports    for all using (true) with check (true);
 create policy "shared_devices_all"   on shared_devices    for all using (true) with check (true);
 create policy "rentals_all"          on rentals           for all using (true) with check (true);
+alter table tutor_supports enable row level security;
+create policy "tutor_supports_all"   on tutor_supports    for all using (true) with check (true);
 
 -- ============================================================
 -- 이미 스키마를 실행한 경우 — 아래 수정 SQL만 별도 실행하세요

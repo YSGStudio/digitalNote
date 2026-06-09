@@ -63,6 +63,16 @@ export interface Rental {
   shared_devices?: SharedDevice
 }
 
+export interface TutorSupport {
+  id: string
+  classroom_id: string
+  support_date: string
+  period: string
+  content: string
+  created_at: string
+  classrooms?: Classroom
+}
+
 export interface TeacherSession {
   classroomId: string
   className: string
