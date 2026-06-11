@@ -86,11 +86,7 @@ function Calendar({
           const hasEntry = markedDates.has(dateStr)
           const col = idx % 7
           return (
-            <button
-              key={idx}
-              onClick={() => onSelect(dateStr)}
-              className="mx-auto flex flex-col items-center"
-            >
+            <button key={idx} onClick={() => onSelect(dateStr)} className="mx-auto flex flex-col items-center">
               <span
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-sm transition-colors
                   ${isSelected ? 'bg-emerald-600 font-semibold text-white' : ''}
@@ -102,7 +98,6 @@ function Calendar({
               >
                 {day}
               </span>
-              {/* 신청 있는 날 초록 점 */}
               <span className={`mt-0.5 h-1 w-1 rounded-full ${hasEntry ? 'bg-emerald-500' : 'invisible'}`} />
             </button>
           )
@@ -121,31 +116,52 @@ export default function TeacherTutorPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [allSupports, setAllSupports] = useState<TutorSupport[]>([])
+  const [dateAllSupports, setDateAllSupports] = useState<TutorSupport[]>([])
+  const [dateLoading, setDateLoading] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
 
-  const load = useCallback(async (cid: string) => {
+  // 내 전체 신청 내역 로드 (달력 점 표시용)
+  const loadMine = useCallback(async (cid: string) => {
     const supabase = createClient()
     const { data } = await supabase
       .from('tutor_supports')
       .select('*')
       .eq('classroom_id', cid)
       .order('support_date', { ascending: false })
-      .order('created_at', { ascending: true })
     setAllSupports((data as TutorSupport[]) ?? [])
+  }, [])
+
+  // 선택한 날짜의 전체 학급 신청 목록 로드
+  const loadDate = useCallback(async (date: string) => {
+    setDateLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('tutor_supports')
+      .select('*, classrooms(class_name)')
+      .eq('support_date', date)
+      .order('created_at', { ascending: true })
+    setDateAllSupports((data as TutorSupport[]) ?? [])
+    setDateLoading(false)
   }, [])
 
   useEffect(() => {
     const session = getTeacherSession()
     if (!session) { router.push('/login/teacher'); return }
     setClassroomId(session.classroomId)
-    load(session.classroomId)
-  }, [router, load])
+    loadMine(session.classroomId)
+  }, [router, loadMine])
 
-  // 선택한 날짜의 신청 목록
-  const dateSupports = allSupports.filter((s) => s.support_date === selectedDate)
+  // 날짜 변경 시 해당 날짜 전체 목록 새로 로드
+  useEffect(() => {
+    loadDate(selectedDate)
+  }, [selectedDate, loadDate])
 
-  // 달력에 점 표시할 날짜 집합
+  // 달력 점 표시용 날짜 집합 (내 신청 기준)
   const markedDates = new Set(allSupports.map((s) => s.support_date))
+
+  // 내 신청 / 다른 학급 신청 분리
+  const myDateSupports = dateAllSupports.filter((s) => s.classroom_id === classroomId)
+  const otherDateSupports = dateAllSupports.filter((s) => s.classroom_id !== classroomId)
 
   async function handleSubmit() {
     if (!selectedDate) { setError('날짜를 선택해주세요.'); return }
@@ -164,7 +180,7 @@ export default function TeacherTutorPage() {
     if (err) { setError(`저장 실패: ${err.message}`); return }
     setSelectedPeriod('')
     setContent('')
-    load(classroomId)
+    await Promise.all([loadMine(classroomId), loadDate(selectedDate)])
   }
 
   async function handleDelete(id: string) {
@@ -173,7 +189,7 @@ export default function TeacherTutorPage() {
     const supabase = createClient()
     await supabase.from('tutor_supports').delete().eq('id', id)
     setDeleting(null)
-    load(classroomId)
+    await Promise.all([loadMine(classroomId), loadDate(selectedDate)])
   }
 
   return (
@@ -201,9 +217,7 @@ export default function TeacherTutorPage() {
                   key={p}
                   onClick={() => setSelectedPeriod(p)}
                   className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                    selectedPeriod === p
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    selectedPeriod === p ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   {p}
@@ -225,54 +239,85 @@ export default function TeacherTutorPage() {
             />
           </div>
 
-          {error && (
-            <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
-          )}
+          {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
-          <Button
-            loading={submitting}
-            onClick={handleSubmit}
-            className="w-full bg-emerald-600 hover:bg-emerald-700"
-          >
+          <Button loading={submitting} onClick={handleSubmit} className="w-full bg-emerald-600 hover:bg-emerald-700">
             수업 지원 신청
           </Button>
         </div>
       </div>
 
-      {/* 선택한 날짜의 신청 목록 */}
-      <div className="mt-6 rounded-xl bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <h2 className="text-sm font-semibold text-gray-900">
-            {selectedDate} 신청 목록
-          </h2>
-          <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-            {dateSupports.length}건
-          </span>
+      {/* 선택한 날짜 신청 목록 */}
+      <div className="mt-6 space-y-4">
+        {/* 내 신청 */}
+        <div className="rounded-xl bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b px-5 py-4">
+            <h2 className="text-sm font-semibold text-gray-900">
+              {selectedDate} — 내 신청
+            </h2>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+              {myDateSupports.length}건
+            </span>
+          </div>
+          {dateLoading ? (
+            <div className="space-y-2 p-4">
+              {[1, 2].map(i => <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />)}
+            </div>
+          ) : myDateSupports.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-400">이 날짜에 내 신청 내역이 없습니다.</p>
+          ) : (
+            <div className="divide-y">
+              {myDateSupports.map((s) => (
+                <div key={s.id} className="flex items-start justify-between px-5 py-4">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                      {s.period}
+                    </span>
+                    <p className="text-sm text-gray-700">{s.content}</p>
+                  </div>
+                  <Button size="sm" variant="danger" loading={deleting === s.id} onClick={() => handleDelete(s.id)}>
+                    삭제
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        {dateSupports.length === 0 ? (
-          <p className="py-10 text-center text-sm text-gray-400">이 날짜에 신청한 내역이 없습니다.</p>
-        ) : (
-          <div className="divide-y">
-            {dateSupports.map((s) => (
-              <div key={s.id} className="flex items-start justify-between px-5 py-4">
-                <div className="flex items-start gap-4">
-                  <span className="mt-0.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+
+        {/* 다른 학급 신청 */}
+        <div className="rounded-xl bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b px-5 py-4">
+            <h2 className="text-sm font-semibold text-gray-900">
+              {selectedDate} — 다른 학급 신청
+            </h2>
+            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+              {otherDateSupports.length}건
+            </span>
+          </div>
+          {dateLoading ? (
+            <div className="space-y-2 p-4">
+              {[1, 2].map(i => <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />)}
+            </div>
+          ) : otherDateSupports.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-400">다른 학급의 신청 내역이 없습니다.</p>
+          ) : (
+            <div className="divide-y">
+              {otherDateSupports.map((s) => (
+                <div key={s.id} className="flex items-start gap-3 px-5 py-4">
+                  <span className="mt-0.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-600">
                     {s.period}
                   </span>
-                  <p className="text-sm text-gray-700">{s.content}</p>
+                  <div className="flex-1">
+                    <p className="mb-0.5 text-xs font-medium text-gray-400">
+                      {s.classrooms?.class_name ?? '알 수 없는 학급'}
+                    </p>
+                    <p className="text-sm text-gray-700">{s.content}</p>
+                  </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  loading={deleting === s.id}
-                  onClick={() => handleDelete(s.id)}
-                >
-                  삭제
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
