@@ -247,8 +247,8 @@ export default function TeacherTutorPage() {
         </div>
       </div>
 
-      {/* 선택한 날짜 신청 목록 */}
-      <div className="mt-6 space-y-4">
+      {/* 선택한 날짜 신청 목록 — 2단 배치 */}
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* 내 신청 */}
         <div className="rounded-xl bg-white shadow-sm">
           <div className="flex items-center justify-between border-b px-5 py-4">
