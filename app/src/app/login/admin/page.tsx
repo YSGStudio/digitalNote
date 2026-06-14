@@ -66,7 +66,20 @@ export default function AdminLoginPage() {
     try {
       const supabase = createClient()
 
-      // 1. Supabase Auth 계정 생성
+      // 1. 학교코드 중복 사전 확인
+      const { data: codeCheck } = await supabase
+        .from('school_config')
+        .select('id')
+        .eq('school_code', schoolCode.trim())
+        .maybeSingle()
+
+      if (codeCheck) {
+        setError('이미 사용 중인 학교코드입니다. 다른 코드를 입력해주세요.')
+        setLoading(false)
+        return
+      }
+
+      // 2. Supabase Auth 계정 생성
       const { data: signupData, error: signupError } = await supabase.auth.signUp({
         email: signupEmail,
         password: signupPassword,
