@@ -172,6 +172,13 @@ export default function AdminClassroomsPage() {
 
   const totalDevicesAll = classrooms.reduce((s, c) => s + c.totalDevices, 0)
 
+  const deviceTotals = classrooms.reduce((acc, c) => {
+    c.deviceSummary.forEach((d) => {
+      acc[d.device_type] = (acc[d.device_type] ?? 0) + d.quantity
+    })
+    return acc
+  }, {} as Record<string, number>)
+
   return (
     <div>
       {/* 헤더 */}
@@ -186,6 +193,23 @@ export default function AdminClassroomsPage() {
         </div>
         <Button onClick={openAddModal}>+ 학급 추가</Button>
       </div>
+
+      {/* 기기 종류별 합계 */}
+      {!loading && classrooms.length > 0 && Object.keys(deviceTotals).length > 0 && (
+        <div className="mb-5 rounded-xl bg-white p-4 shadow-sm">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">기기 종류별 합계</p>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(deviceTotals)
+              .sort((a, b) => b[1] - a[1])
+              .map(([type, count]) => (
+                <div key={type} className="flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5">
+                  <span className="text-xs text-gray-600">{type}</span>
+                  <span className="text-xs font-bold text-blue-700">{count}대</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* 스켈레톤 로딩 */}
       {loading && (
