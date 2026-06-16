@@ -14,6 +14,7 @@ interface DeviceSummary {
 interface ClassroomWithDevices extends Classroom {
   deviceSummary: DeviceSummary[]
   totalDevices: number
+  lastUpdatedAt: string | null
 }
 
 export default function AdminClassroomsPage() {
@@ -41,15 +42,20 @@ export default function AdminClassroomsPage() {
       supabase.from('classrooms').select('*').order('class_name'),
       supabase
         .from('classroom_devices')
-        .select('classroom_id, quantity, devices(device_type)')
+        .select('classroom_id, quantity, updated_at, devices(device_type)')
         .gt('quantity', 0),
     ])
 
     const deviceMap: Record<string, DeviceSummary[]> = {}
+    const lastUpdatedMap: Record<string, string> = {}
     ;(allDevs as unknown as ClassroomDevice[])?.forEach((d) => {
       if (!deviceMap[d.classroom_id]) deviceMap[d.classroom_id] = []
       if (d.devices?.device_type) {
         deviceMap[d.classroom_id].push({ device_type: d.devices.device_type, quantity: d.quantity })
+      }
+      if (d.updated_at) {
+        const prev = lastUpdatedMap[d.classroom_id]
+        if (!prev || d.updated_at > prev) lastUpdatedMap[d.classroom_id] = d.updated_at
       }
     })
 
@@ -59,6 +65,7 @@ export default function AdminClassroomsPage() {
         ...c,
         deviceSummary: summary,
         totalDevices: summary.reduce((sum, d) => sum + d.quantity, 0),
+        lastUpdatedAt: lastUpdatedMap[c.id] ?? null,
       }
     })
 
@@ -260,6 +267,11 @@ export default function AdminClassroomsPage() {
               <p className="mt-0.5 text-xs text-gray-400">
                 {c.teacher_name ? `${c.teacher_name} 선생님` : '담당 교사 미입력'}
               </p>
+              {c.lastUpdatedAt && (
+                <p className="mt-0.5 text-xs text-gray-300">
+                  수량 업데이트: {new Date(c.lastUpdatedAt).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                </p>
+              )}
 
               <div className="my-3 border-t border-gray-100" />
 

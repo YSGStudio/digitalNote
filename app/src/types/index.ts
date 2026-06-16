@@ -25,6 +25,7 @@ export interface ClassroomDevice {
   classroom_id: string
   device_id: string
   quantity: number
+  updated_at?: string
   devices?: Device
   classrooms?: Classroom
 }
