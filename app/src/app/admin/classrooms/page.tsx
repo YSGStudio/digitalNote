@@ -114,10 +114,12 @@ export default function AdminClassroomsPage() {
     setEditSaving(true)
     setEditError('')
     const supabase = createClient()
+    const now = new Date().toISOString()
     const upserts = allDevices.map((d) => ({
       classroom_id: detailClassroom.id,
       device_id: d.id,
       quantity: quantities[d.id] ?? 0,
+      updated_at: now,
     }))
     const { error } = await supabase
       .from('classroom_devices')
