@@ -10,6 +10,13 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { formatDate } from '@/lib/utils'
 
+function toLocalDateString(date: Date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export default function TeacherRentalsPage() {
   const router = useRouter()
   const [classroomId, setClassroomId] = useState('')
@@ -18,7 +25,7 @@ export default function TeacherRentalsPage() {
   const [myRentals, setMyRentals] = useState<Rental[]>([])
   const [sharedDevices, setSharedDevices] = useState<SharedDevice[]>([])
   const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState({ device_id: '', quantity: '1' })
+  const [form, setForm] = useState({ device_id: '', quantity: '1', rental_date: '' })
   const [submitting, setSubmitting] = useState(false)
   const [requesting, setRequesting] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -61,6 +68,8 @@ export default function TeacherRentalsPage() {
       return
     }
 
+    const rentedAt = form.rental_date || toLocalDateString(new Date())
+
     setSubmitting(true)
     setError('')
     const supabase = createClient()
@@ -70,6 +79,7 @@ export default function TeacherRentalsPage() {
         device_id: form.device_id,
         quantity: qty,
         status: '대여 중',
+        rented_at: rentedAt,
       }),
       supabase
         .from('shared_devices')
@@ -78,7 +88,7 @@ export default function TeacherRentalsPage() {
     ])
     setSubmitting(false)
     setModalOpen(false)
-    setForm({ device_id: '', quantity: '1' })
+    setForm({ device_id: '', quantity: '1', rental_date: '' })
     load(classroomId)
   }
 
@@ -99,7 +109,7 @@ export default function TeacherRentalsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">기기 대여·반납</h1>
-        <Button onClick={() => { setError(''); setModalOpen(true) }}>+ 대여 신청</Button>
+        <Button onClick={() => { setError(''); setForm({ device_id: '', quantity: '1', rental_date: toLocalDateString(new Date()) }); setModalOpen(true) }}>+ 대여 신청</Button>
       </div>
 
       <div className="mb-4 flex gap-2">
@@ -192,6 +202,16 @@ export default function TeacherRentalsPage() {
               onChange={(e) => setForm({ ...form, quantity: e.target.value })}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">대여 날짜</label>
+            <input
+              type="date"
+              value={form.rental_date}
+              onChange={(e) => setForm({ ...form, rental_date: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <p className="mt-1 text-xs text-gray-400">입력하지 않으면 오늘 날짜로 저장됩니다.</p>
           </div>
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
