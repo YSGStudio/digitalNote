@@ -2,12 +2,20 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
+import { TutorSupport } from '@/types'
 
 interface Stats {
   classroomCount: number
   pendingRepairs: number
   activeRentals: number
   sharedDeviceCount: number
+}
+
+function toLocalDateString(date: Date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 export default function AdminDashboardPage() {
@@ -24,16 +32,19 @@ export default function AdminDashboardPage() {
     classrooms: { class_name: string } | null
     devices: { device_type: string } | null
   }>>([])
+  const [todaySupports, setTodaySupports] = useState<TutorSupport[]>([])
 
   useEffect(() => {
     async function load() {
       const supabase = createClient()
+      const today = toLocalDateString(new Date())
       const [
         { count: classroomCount },
         { count: pendingRepairs },
         { count: activeRentals },
         { count: sharedDeviceCount },
         { data: repairs },
+        { data: supports },
       ] = await Promise.all([
         supabase.from('classrooms').select('*', { count: 'exact', head: true }),
         supabase.from('repair_reports').select('*', { count: 'exact', head: true }).neq('status', '처리 완료'),
@@ -44,6 +55,11 @@ export default function AdminDashboardPage() {
           .select('id, status, reported_at, classrooms(class_name), devices(device_type)')
           .order('reported_at', { ascending: false })
           .limit(5),
+        supabase
+          .from('tutor_supports')
+          .select('*, classrooms(class_name)')
+          .eq('support_date', today)
+          .order('created_at', { ascending: true }),
       ])
       setStats({
         classroomCount: classroomCount ?? 0,
@@ -52,6 +68,7 @@ export default function AdminDashboardPage() {
         sharedDeviceCount: sharedDeviceCount ?? 0,
       })
       setRecentRepairs((repairs as unknown as typeof recentRepairs) ?? [])
+      setTodaySupports((supports as TutorSupport[]) ?? [])
     }
     load()
   }, [])
@@ -77,6 +94,34 @@ export default function AdminDashboardPage() {
             <p className="mt-0.5 text-sm text-gray-500">{card.label}</p>
           </div>
         ))}
+      </div>
+
+      <div className="mb-8 rounded-xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-emerald-900">
+            <span className="text-xl">📚</span> 오늘의 튜터 지원
+          </h2>
+          <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+            {todaySupports.length}건
+          </span>
+        </div>
+        {todaySupports.length === 0 ? (
+          <p className="py-4 text-center text-sm text-emerald-700/60">오늘 등록된 튜터 수업 지원이 없습니다.</p>
+        ) : (
+          <div className="space-y-2">
+            {todaySupports.map((s) => (
+              <div key={s.id} className="flex items-start gap-3 rounded-lg bg-white px-4 py-3 shadow-sm">
+                <span className="mt-0.5 shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                  {s.period}
+                </span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">{s.classrooms?.class_name ?? '알 수 없는 학급'}</p>
+                  <p className="mt-0.5 text-sm text-gray-600">{s.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl bg-white p-6 shadow-sm">
