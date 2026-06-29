@@ -25,7 +25,7 @@ export default function TeacherRentalsPage() {
   const [myRentals, setMyRentals] = useState<Rental[]>([])
   const [sharedDevices, setSharedDevices] = useState<SharedDevice[]>([])
   const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState({ device_id: '', quantity: '1', rental_date: '' })
+  const [form, setForm] = useState({ device_id: '', quantity: '1', rental_date: '', description: '' })
   const [submitting, setSubmitting] = useState(false)
   const [requesting, setRequesting] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -80,6 +80,7 @@ export default function TeacherRentalsPage() {
         quantity: qty,
         status: '대여 중',
         rented_at: rentedAt,
+        description: form.description.trim() || null,
       }),
       supabase
         .from('shared_devices')
@@ -88,7 +89,7 @@ export default function TeacherRentalsPage() {
     ])
     setSubmitting(false)
     setModalOpen(false)
-    setForm({ device_id: '', quantity: '1', rental_date: '' })
+    setForm({ device_id: '', quantity: '1', rental_date: '', description: '' })
     load(classroomId)
   }
 
@@ -109,7 +110,7 @@ export default function TeacherRentalsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">기기 대여·반납</h1>
-        <Button onClick={() => { setError(''); setForm({ device_id: '', quantity: '1', rental_date: toLocalDateString(new Date()) }); setModalOpen(true) }}>+ 대여 신청</Button>
+        <Button onClick={() => { setError(''); setForm({ device_id: '', quantity: '1', rental_date: toLocalDateString(new Date()), description: '' }); setModalOpen(true) }}>+ 대여 신청</Button>
       </div>
 
       <div className="mb-4 flex gap-2">
@@ -148,7 +149,10 @@ export default function TeacherRentalsPage() {
                   <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-gray-500">{formatDate(r.rented_at)}</td>
                     <td className="px-4 py-3 font-medium">{r.classrooms?.class_name ?? '-'}</td>
-                    <td className="px-4 py-3">{r.shared_devices?.device_name ?? '-'}</td>
+                    <td className="px-4 py-3">
+                      <p>{r.shared_devices?.device_name ?? '-'}</p>
+                      {r.description && <p className="mt-0.5 text-xs text-gray-400">{r.description}</p>}
+                    </td>
                     <td className="px-4 py-3">{r.quantity}대</td>
                     <td className="px-4 py-3"><Badge label={r.status} /></td>
                     {tab === 'my' && (
@@ -212,6 +216,18 @@ export default function TeacherRentalsPage() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <p className="mt-1 text-xs text-gray-400">입력하지 않으면 오늘 날짜로 저장됩니다.</p>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              상세 내용 <span className="font-normal text-gray-400">(선택)</span>
+            </label>
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              rows={3}
+              className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="대여 목적이나 참고사항을 입력해주세요."
+            />
           </div>
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">

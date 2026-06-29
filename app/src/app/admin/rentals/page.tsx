@@ -107,7 +107,10 @@ export default function AdminRentalsPage() {
                   <tr key={r.id} className={`hover:bg-gray-50 ${r.status === '반납 요청 중' ? 'bg-purple-50/40' : ''}`}>
                     <td className="px-4 py-3 text-gray-500">{formatDate(r.rented_at)}</td>
                     <td className="px-4 py-3 font-medium">{r.classrooms?.class_name ?? '-'}</td>
-                    <td className="px-4 py-3">{r.shared_devices?.device_name ?? '-'}</td>
+                    <td className="px-4 py-3">
+                      <p>{r.shared_devices?.device_name ?? '-'}</p>
+                      {r.description && <p className="mt-0.5 text-xs text-gray-400">{r.description}</p>}
+                    </td>
                     <td className="px-4 py-3">{r.quantity}대</td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(r.returned_at)}</td>
                     <td className="px-4 py-3"><Badge label={r.status} /></td>

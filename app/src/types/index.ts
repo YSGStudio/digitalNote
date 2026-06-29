@@ -57,6 +57,7 @@ export interface Rental {
   classroom_id: string
   device_id: string
   quantity: number
+  description: string | null
   rented_at: string
   returned_at: string | null
   status: RentalStatus

@@ -81,6 +81,7 @@ create table if not exists rentals (
   classroom_id uuid not null references classrooms(id) on delete cascade,
   device_id uuid references shared_devices(id),
   quantity int not null default 1,
+  description text,
   rented_at timestamptz default now(),
   returned_at timestamptz,
   status text not null default '대여 중'
@@ -136,3 +137,6 @@ create policy "tutor_supports_all"   on tutor_supports    for all using (true) w
 -- ALTER TABLE rentals DROP CONSTRAINT IF EXISTS rentals_status_check;
 -- ALTER TABLE rentals ADD CONSTRAINT rentals_status_check
 --   CHECK (status IN ('대여 중', '반납 요청 중', '반납 완료'));
+
+-- [대여 신청 상세 내용 추가] 이미 스키마를 실행한 경우 아래 SQL을 실행하세요:
+-- ALTER TABLE rentals ADD COLUMN IF NOT EXISTS description text;
