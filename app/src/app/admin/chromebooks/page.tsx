@@ -67,6 +67,7 @@ export default function ChromebooksPage() {
   const [studentSaving, setStudentSaving] = useState(false)
   const [studentFormErr, setStudentFormErr] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [filterGrade, setFilterGrade] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -367,6 +368,7 @@ export default function ChromebooksPage() {
   }
 
   const filteredStudents = students.filter((s) => {
+    if (filterGrade && s.grade !== filterGrade) return false
     if (!search) return true
     const q = search.toLowerCase()
     return (
@@ -455,8 +457,8 @@ export default function ChromebooksPage() {
         <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{uploadErr}</div>
       )}
 
-      {/* Tabs + Search */}
-      <div className="mb-4 flex items-center gap-3">
+      {/* Tabs + Search + Grade Filter */}
+      <div className="mb-4 flex items-center gap-2">
         <div className="flex gap-2">
           {(
             [
@@ -479,9 +481,19 @@ export default function ChromebooksPage() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="이름 또는 기기번호로 검색..."
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder="이름 또는 기기번호..."
+          className="w-44 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
+        <select
+          value={filterGrade}
+          onChange={(e) => setFilterGrade(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="">전체 학년</option>
+          {['1', '2', '3', '4', '5', '6'].map((g) => (
+            <option key={g} value={g}>{g}학년</option>
+          ))}
+        </select>
       </div>
 
       {loading ? (
@@ -492,9 +504,9 @@ export default function ChromebooksPage() {
           {filteredStudents.length === 0 ? (
             <div className="py-12 text-center">
               <p className="text-sm text-gray-400">
-                {search ? '검색 결과가 없습니다.' : '등록된 학생이 없습니다.'}
+                {search || filterGrade ? '검색 결과가 없습니다.' : '등록된 학생이 없습니다.'}
               </p>
-              {!search && (
+              {!search && !filterGrade && (
                 <button onClick={openAddStudent} className="mt-3 text-sm font-medium text-blue-600 hover:underline">
                   + 학생 직접 추가
                 </button>
