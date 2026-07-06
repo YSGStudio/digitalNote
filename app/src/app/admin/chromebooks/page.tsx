@@ -78,7 +78,6 @@ export default function ChromebooksPage() {
         .select('*, chromebooks(*)')
         .order('grade', { ascending: true })
         .order('class_name', { ascending: true })
-        .order('student_number', { ascending: true })
         .order('name', { ascending: true }),
       supabase
         .from('chromebooks')
