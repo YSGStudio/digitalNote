@@ -80,3 +80,22 @@ export interface TeacherSession {
   className: string
   teacherName: string
 }
+
+export interface Student {
+  id: string
+  name: string
+  grade: string | null
+  class_name: string | null
+  student_number: string | null
+  created_at: string
+  chromebooks?: Chromebook[]
+}
+
+export interface Chromebook {
+  id: string
+  device_number: string
+  student_id: string | null
+  assigned_at: string | null
+  created_at: string
+  students?: Student
+}

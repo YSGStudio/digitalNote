@@ -88,7 +88,26 @@ create table if not exists rentals (
     check (status in ('대여 중', '반납 요청 중', '반납 완료'))
 );
 
--- 8. 튜터 수업 지원 신청
+-- 8. 학생 목록 (크롬북 관리용)
+create table if not exists students (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  grade text,
+  class_name text,
+  student_number text,
+  created_at timestamptz default now()
+);
+
+-- 9. 크롬북 기기 목록
+create table if not exists chromebooks (
+  id uuid primary key default gen_random_uuid(),
+  device_number text not null unique,
+  student_id uuid unique references students(id) on delete set null,
+  assigned_at timestamptz,
+  created_at timestamptz default now()
+);
+
+-- 10. 튜터 수업 지원 신청
 create table if not exists tutor_supports (
   id uuid primary key default gen_random_uuid(),
   classroom_id uuid not null references classrooms(id) on delete cascade,
@@ -125,6 +144,10 @@ create policy "shared_devices_all"   on shared_devices    for all using (true) w
 create policy "rentals_all"          on rentals           for all using (true) with check (true);
 alter table tutor_supports enable row level security;
 create policy "tutor_supports_all"   on tutor_supports    for all using (true) with check (true);
+alter table students enable row level security;
+create policy "students_all"         on students          for all using (true) with check (true);
+alter table chromebooks enable row level security;
+create policy "chromebooks_all"      on chromebooks       for all using (true) with check (true);
 
 -- ============================================================
 -- 이미 스키마를 실행한 경우 — 아래 수정 SQL만 별도 실행하세요
@@ -140,3 +163,24 @@ create policy "tutor_supports_all"   on tutor_supports    for all using (true) w
 
 -- [대여 신청 상세 내용 추가] 이미 스키마를 실행한 경우 아래 SQL을 실행하세요:
 -- ALTER TABLE rentals ADD COLUMN IF NOT EXISTS description text;
+
+-- [크롬북 관리 추가] 이미 스키마를 실행한 경우 아래 SQL을 실행하세요:
+-- CREATE TABLE IF NOT EXISTS students (
+--   id uuid primary key default gen_random_uuid(),
+--   name text not null,
+--   grade text,
+--   class_name text,
+--   student_number text,
+--   created_at timestamptz default now()
+-- );
+-- CREATE TABLE IF NOT EXISTS chromebooks (
+--   id uuid primary key default gen_random_uuid(),
+--   device_number text not null unique,
+--   student_id uuid unique references students(id) on delete set null,
+--   assigned_at timestamptz,
+--   created_at timestamptz default now()
+-- );
+-- ALTER TABLE students ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "students_all" ON students FOR ALL USING (true) WITH CHECK (true);
+-- ALTER TABLE chromebooks ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "chromebooks_all" ON chromebooks FOR ALL USING (true) WITH CHECK (true);
