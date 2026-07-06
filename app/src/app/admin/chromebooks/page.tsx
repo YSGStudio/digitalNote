@@ -344,7 +344,7 @@ export default function ChromebooksPage() {
     const q = search.toLowerCase()
     return (
       s.name.toLowerCase().includes(q) ||
-      s.chromebooks.some((c) => c.device_number.toLowerCase().includes(q))
+      (s.chromebooks ?? []).some((c) => c.device_number?.toLowerCase().includes(q))
     )
   })
 
