@@ -94,6 +94,7 @@ export interface Student {
 export interface Chromebook {
   id: string
   device_number: string
+  device_year: string | null
   student_id: string | null
   assigned_at: string | null
   created_at: string

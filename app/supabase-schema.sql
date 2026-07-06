@@ -102,6 +102,7 @@ create table if not exists students (
 create table if not exists chromebooks (
   id uuid primary key default gen_random_uuid(),
   device_number text not null unique,
+  device_year text,
   student_id uuid unique references students(id) on delete set null,
   assigned_at timestamptz,
   created_at timestamptz default now()
@@ -176,10 +177,13 @@ create policy "chromebooks_all"      on chromebooks       for all using (true) w
 -- CREATE TABLE IF NOT EXISTS chromebooks (
 --   id uuid primary key default gen_random_uuid(),
 --   device_number text not null unique,
+--   device_year text,
 --   student_id uuid unique references students(id) on delete set null,
 --   assigned_at timestamptz,
 --   created_at timestamptz default now()
 -- );
+-- [기기년도 추가] chromebooks 테이블이 이미 있는 경우 아래 SQL을 실행하세요:
+-- ALTER TABLE chromebooks ADD COLUMN IF NOT EXISTS device_year text;
 -- ALTER TABLE students ENABLE ROW LEVEL SECURITY;
 -- CREATE POLICY "students_all" ON students FOR ALL USING (true) WITH CHECK (true);
 -- ALTER TABLE chromebooks ENABLE ROW LEVEL SECURITY;

@@ -10,13 +10,18 @@ import { formatDate } from '@/lib/utils'
 type StudentWithDevice = Student & { chromebooks: Chromebook[] }
 type ChromebookWithStudent = Chromebook & { students: Student | null }
 
-type UploadRow = {
+type StudentUploadRow = {
   name: string
   grade: string
   class_name: string
   student_number: string
   device_number: string
   _isNew: boolean
+}
+
+type DeviceUploadRow = {
+  device_number: string
+  device_year: string
 }
 
 function findCol(row: Record<string, unknown>, candidates: string[]): string {
@@ -41,8 +46,8 @@ export default function ChromebooksPage() {
 
   // Upload
   const [uploadType, setUploadType] = useState<'students' | 'devices' | null>(null)
-  const [uploadRows, setUploadRows] = useState<UploadRow[]>([])
-  const [deviceUploadRows, setDeviceUploadRows] = useState<string[]>([])
+  const [studentUploadRows, setStudentUploadRows] = useState<StudentUploadRow[]>([])
+  const [deviceUploadRows, setDeviceUploadRows] = useState<DeviceUploadRow[]>([])
   const [uploadSaving, setUploadSaving] = useState(false)
   const [uploadErr, setUploadErr] = useState('')
   const studentFileRef = useRef<HTMLInputElement>(null)
@@ -117,19 +122,18 @@ export default function ChromebooksPage() {
         return
       }
 
-      // 기존 학생 조회 — 중복 여부 미리 표시
       const supabase = createClient()
       const { data: existing } = await supabase.from('students').select('name, grade, class_name')
       const existingSet = new Set(
         (existing ?? []).map((s) => `${s.name}|${s.grade ?? ''}|${s.class_name ?? ''}`)
       )
 
-      const withMeta: UploadRow[] = parsed.map((r) => ({
-        ...r,
-        _isNew: !existingSet.has(`${r.name}|${r.grade}|${r.class_name}`),
-      }))
-
-      setUploadRows(withMeta)
+      setStudentUploadRows(
+        parsed.map((r) => ({
+          ...r,
+          _isNew: !existingSet.has(`${r.name}|${r.grade}|${r.class_name}`),
+        }))
+      )
       setUploadType('students')
     } catch {
       setUploadErr('파일을 읽을 수 없습니다. .xlsx 또는 .csv 파일을 사용해주세요.')
@@ -145,9 +149,12 @@ export default function ChromebooksPage() {
       const rows = await parseExcelFile(file)
       if (!rows.length) { setUploadErr('파일에 데이터가 없습니다.'); return }
 
-      const parsed = rows
-        .map((r) => findCol(r, ['기기번호', '시리얼번호', '시리얼', '번호', 'serial', 'device', 'number']))
-        .filter(Boolean)
+      const parsed: DeviceUploadRow[] = rows
+        .map((r) => ({
+          device_number: findCol(r, ['기기번호', '시리얼번호', '시리얼', '번호', 'serial', 'device', 'number']),
+          device_year: findCol(r, ['기기년도', '년도', '연도', '구입년도', '구매년도', 'year']),
+        }))
+        .filter((r) => r.device_number)
 
       if (!parsed.length) {
         setUploadErr('"기기번호" 열을 찾을 수 없습니다. 열 제목을 확인해주세요.')
@@ -165,14 +172,28 @@ export default function ChromebooksPage() {
     const supabase = createClient()
 
     if (uploadType === 'devices') {
-      await supabase
-        .from('chromebooks')
-        .upsert(
-          deviceUploadRows.map((d) => ({ device_number: d })),
-          { onConflict: 'device_number', ignoreDuplicates: true }
+      // 기존 기기 조회
+      const { data: existing } = await supabase.from('chromebooks').select('id, device_number')
+      const existingMap = new Map((existing ?? []).map((c) => [c.device_number, c.id]))
+
+      const toInsert = deviceUploadRows.filter((r) => !existingMap.has(r.device_number))
+      const toUpdate = deviceUploadRows.filter((r) => existingMap.has(r.device_number))
+
+      if (toInsert.length) {
+        await supabase.from('chromebooks').insert(
+          toInsert.map((r) => ({
+            device_number: r.device_number,
+            device_year: r.device_year || null,
+          }))
         )
+      }
+      for (const r of toUpdate) {
+        await supabase
+          .from('chromebooks')
+          .update({ device_year: r.device_year || null })
+          .eq('id', existingMap.get(r.device_number)!)
+      }
     } else if (uploadType === 'students') {
-      // 최신 기존 학생 목록으로 dedup 맵 생성
       const { data: existing } = await supabase
         .from('students')
         .select('id, name, grade, class_name')
@@ -181,13 +202,12 @@ export default function ChromebooksPage() {
         existingMap.set(`${s.name}|${s.grade ?? ''}|${s.class_name ?? ''}`, s.id)
       }
 
-      for (const row of uploadRows) {
+      for (const row of studentUploadRows) {
         const key = `${row.name}|${row.grade}|${row.class_name}`
         const existingId = existingMap.get(key)
         let studentId: string
 
         if (existingId) {
-          // 이미 있는 학생 — 학년·반·번호 덮어쓰기
           await supabase
             .from('students')
             .update({
@@ -198,7 +218,6 @@ export default function ChromebooksPage() {
             .eq('id', existingId)
           studentId = existingId
         } else {
-          // 신규 학생 등록
           const { data: s } = await supabase
             .from('students')
             .insert({
@@ -213,7 +232,6 @@ export default function ChromebooksPage() {
           studentId = s.id
         }
 
-        // 기기번호 있으면 기기 배정 덮어쓰기
         if (row.device_number) {
           await supabase
             .from('chromebooks')
@@ -233,7 +251,7 @@ export default function ChromebooksPage() {
 
     setUploadSaving(false)
     setUploadType(null)
-    setUploadRows([])
+    setStudentUploadRows([])
     setDeviceUploadRows([])
     load()
   }
@@ -312,7 +330,6 @@ export default function ChromebooksPage() {
     load()
   }
 
-  // Filter
   const filteredStudents = students.filter((s) => {
     if (!search) return true
     const q = search.toLowerCase()
@@ -327,7 +344,8 @@ export default function ChromebooksPage() {
     const q = search.toLowerCase()
     return (
       c.device_number.toLowerCase().includes(q) ||
-      (c.students?.name.toLowerCase().includes(q) ?? false)
+      (c.students?.name.toLowerCase().includes(q) ?? false) ||
+      (c.device_year?.includes(q) ?? false)
     )
   })
 
@@ -352,8 +370,8 @@ export default function ChromebooksPage() {
     )
   }
 
-  const newCount = uploadRows.filter((r) => r._isNew).length
-  const updateCount = uploadRows.filter((r) => !r._isNew).length
+  const newCount = studentUploadRows.filter((r) => r._isNew).length
+  const updateCount = studentUploadRows.filter((r) => !r._isNew).length
 
   return (
     <div>
@@ -367,37 +385,13 @@ export default function ChromebooksPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <input
-            ref={studentFileRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={handleStudentFile}
-          />
-          <input
-            ref={deviceFileRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={handleDeviceFile}
-          />
+          <input ref={studentFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleStudentFile} />
+          <input ref={deviceFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleDeviceFile} />
           <Button onClick={openAddStudent}>+ 학생 추가</Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setUploadErr('')
-              studentFileRef.current?.click()
-            }}
-          >
+          <Button variant="secondary" onClick={() => { setUploadErr(''); studentFileRef.current?.click() }}>
             학생 명단 업로드
           </Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setUploadErr('')
-              deviceFileRef.current?.click()
-            }}
-          >
+          <Button variant="secondary" onClick={() => { setUploadErr(''); deviceFileRef.current?.click() }}>
             기기 목록 업로드
           </Button>
         </div>
@@ -412,7 +406,9 @@ export default function ChromebooksPage() {
             <code key={t} className="mr-1 rounded bg-blue-100 px-1">{t}</code>
           ))}
           &nbsp;·&nbsp; 기기 목록:{' '}
-          <code className="rounded bg-blue-100 px-1">기기번호</code>
+          {['기기번호', '기기년도(선택)'].map((t) => (
+            <code key={t} className="mr-1 rounded bg-blue-100 px-1">{t}</code>
+          ))}
         </span>
       </div>
 
@@ -433,9 +429,7 @@ export default function ChromebooksPage() {
               key={t.value}
               onClick={() => setTab(t.value)}
               className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                tab === t.value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
+                tab === t.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
               }`}
             >
               {t.label}
@@ -462,10 +456,7 @@ export default function ChromebooksPage() {
                 {search ? '검색 결과가 없습니다.' : '등록된 학생이 없습니다.'}
               </p>
               {!search && (
-                <button
-                  onClick={openAddStudent}
-                  className="mt-3 text-sm font-medium text-blue-600 hover:underline"
-                >
+                <button onClick={openAddStudent} className="mt-3 text-sm font-medium text-blue-600 hover:underline">
                   + 학생 직접 추가
                 </button>
               )}
@@ -478,6 +469,7 @@ export default function ChromebooksPage() {
                     <th className="px-4 py-3 font-medium">이름</th>
                     <th className="px-4 py-3 font-medium">학년 / 반 / 번호</th>
                     <th className="px-4 py-3 font-medium">기기번호</th>
+                    <th className="px-4 py-3 font-medium">기기년도</th>
                     <th className="px-4 py-3 font-medium">배정일</th>
                     <th className="px-4 py-3 font-medium">관리</th>
                   </tr>
@@ -491,48 +483,31 @@ export default function ChromebooksPage() {
                         <td className="px-4 py-3 text-gray-500">{gradeLabel(s)}</td>
                         <td className="px-4 py-3">
                           {device ? (
-                            <span className="font-mono font-medium text-blue-700">
-                              {device.device_number}
-                            </span>
+                            <span className="font-mono font-medium text-blue-700">{device.device_number}</span>
                           ) : (
                             <span className="text-gray-400">미배정</span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">
+                          {device?.device_year ?? '-'}
                         </td>
                         <td className="px-4 py-3 text-gray-500">
                           {device?.assigned_at ? formatDate(device.assigned_at) : '-'}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1.5">
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setAssignTarget(s)
-                                setDeviceSearch('')
-                              }}
-                            >
+                            <Button size="sm" onClick={() => { setAssignTarget(s); setDeviceSearch('') }}>
                               {device ? '기기 변경' : '기기 배정'}
                             </Button>
                             {device && (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => handleUnassign(device)}
-                              >
+                              <Button size="sm" variant="secondary" onClick={() => handleUnassign(device)}>
                                 배정 해제
                               </Button>
                             )}
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => openEditStudent(s)}
-                            >
+                            <Button size="sm" variant="secondary" onClick={() => openEditStudent(s)}>
                               수정
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => handleDeleteStudent(s)}
-                            >
+                            <Button size="sm" variant="secondary" onClick={() => handleDeleteStudent(s)}>
                               삭제
                             </Button>
                           </div>
@@ -558,6 +533,7 @@ export default function ChromebooksPage() {
                 <thead>
                   <tr className="border-b bg-gray-50 text-left text-gray-500">
                     <th className="px-4 py-3 font-medium">기기번호</th>
+                    <th className="px-4 py-3 font-medium">기기년도</th>
                     <th className="px-4 py-3 font-medium">배정 학생</th>
                     <th className="px-4 py-3 font-medium">학년 / 반</th>
                     <th className="px-4 py-3 font-medium">배정일</th>
@@ -568,6 +544,7 @@ export default function ChromebooksPage() {
                   {filteredDevices.map((c) => (
                     <tr key={c.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-mono font-medium">{c.device_number}</td>
+                      <td className="px-4 py-3 text-gray-500">{c.device_year ?? '-'}</td>
                       <td className="px-4 py-3">
                         {c.students ? (
                           <span className="font-medium">{c.students.name}</span>
@@ -611,18 +588,14 @@ export default function ChromebooksPage() {
       {/* Upload Preview Modal */}
       <Modal
         open={uploadType !== null}
-        onClose={() => {
-          setUploadType(null)
-          setUploadRows([])
-          setDeviceUploadRows([])
-        }}
+        onClose={() => { setUploadType(null); setStudentUploadRows([]); setDeviceUploadRows([]) }}
         title={uploadType === 'students' ? '학생 명단 업로드 확인' : '기기 목록 업로드 확인'}
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-700">
             {uploadType === 'students' ? (
               <>
-                총 <strong>{uploadRows.length}명</strong> —{' '}
+                총 <strong>{studentUploadRows.length}명</strong> —{' '}
                 <span className="text-blue-600">신규 {newCount}명</span>
                 {updateCount > 0 && (
                   <span className="ml-1 text-orange-600">
@@ -633,8 +606,7 @@ export default function ChromebooksPage() {
               </>
             ) : (
               <>
-                총 <strong>{deviceUploadRows.length}개</strong>의 기기 번호를 등록합니다.
-                이미 등록된 기기번호는 무시됩니다.
+                총 <strong>{deviceUploadRows.length}개</strong> — 신규 기기는 추가, 기존 기기는 기기년도만 업데이트됩니다.
               </>
             )}
           </p>
@@ -653,13 +625,16 @@ export default function ChromebooksPage() {
                       <th className="px-3 py-2 text-left font-medium text-gray-500">기기번호</th>
                     </>
                   ) : (
-                    <th className="px-3 py-2 text-left font-medium text-gray-500">기기번호</th>
+                    <>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">기기번호</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">기기년도</th>
+                    </>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {uploadType === 'students'
-                  ? uploadRows.slice(0, 50).map((row, i) => (
+                  ? studentUploadRows.slice(0, 50).map((row, i) => (
                       <tr key={i} className={row._isNew ? '' : 'bg-orange-50/60'}>
                         <td className="px-3 py-1.5">
                           {row._isNew ? (
@@ -672,24 +647,19 @@ export default function ChromebooksPage() {
                         <td className="px-3 py-1.5 text-gray-500">{row.grade || '-'}</td>
                         <td className="px-3 py-1.5 text-gray-500">{row.class_name || '-'}</td>
                         <td className="px-3 py-1.5 text-gray-500">{row.student_number || '-'}</td>
-                        <td className="px-3 py-1.5 font-mono text-blue-700">
-                          {row.device_number || '-'}
-                        </td>
+                        <td className="px-3 py-1.5 font-mono text-blue-700">{row.device_number || '-'}</td>
                       </tr>
                     ))
-                  : deviceUploadRows.slice(0, 50).map((d, i) => (
+                  : deviceUploadRows.slice(0, 50).map((r, i) => (
                       <tr key={i}>
-                        <td className="px-3 py-1.5 font-mono">{d}</td>
+                        <td className="px-3 py-1.5 font-mono">{r.device_number}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{r.device_year || '-'}</td>
                       </tr>
                     ))}
-                {(uploadType === 'students' ? uploadRows : deviceUploadRows).length > 50 && (
+                {(uploadType === 'students' ? studentUploadRows : deviceUploadRows).length > 50 && (
                   <tr>
-                    <td
-                      colSpan={uploadType === 'students' ? 6 : 1}
-                      className="px-3 py-2 text-center text-gray-400"
-                    >
-                      ... 외{' '}
-                      {(uploadType === 'students' ? uploadRows : deviceUploadRows).length - 50}개
+                    <td colSpan={uploadType === 'students' ? 6 : 2} className="px-3 py-2 text-center text-gray-400">
+                      ... 외 {(uploadType === 'students' ? studentUploadRows : deviceUploadRows).length - 50}개
                     </td>
                   </tr>
                 )}
@@ -698,19 +668,10 @@ export default function ChromebooksPage() {
           </div>
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setUploadType(null)
-                setUploadRows([])
-                setDeviceUploadRows([])
-              }}
-            >
+            <Button variant="secondary" onClick={() => { setUploadType(null); setStudentUploadRows([]); setDeviceUploadRows([]) }}>
               취소
             </Button>
-            <Button loading={uploadSaving} onClick={confirmUpload}>
-              등록
-            </Button>
+            <Button loading={uploadSaving} onClick={confirmUpload}>등록</Button>
           </div>
         </div>
       </Modal>
@@ -718,10 +679,7 @@ export default function ChromebooksPage() {
       {/* Device Assignment Modal */}
       <Modal
         open={assignTarget !== null}
-        onClose={() => {
-          setAssignTarget(null)
-          setDeviceSearch('')
-        }}
+        onClose={() => { setAssignTarget(null); setDeviceSearch('') }}
         title={`기기 배정 — ${assignTarget?.name}`}
       >
         <div className="space-y-3">
@@ -744,9 +702,7 @@ export default function ChromebooksPage() {
           <div className="max-h-72 overflow-y-auto rounded-lg border">
             {unassignedForModal.length === 0 ? (
               <p className="py-8 text-center text-sm text-gray-400">
-                {deviceSearch
-                  ? '검색 결과가 없습니다.'
-                  : '미배정 기기가 없습니다. 기기 목록을 먼저 업로드해주세요.'}
+                {deviceSearch ? '검색 결과가 없습니다.' : '미배정 기기가 없습니다. 기기 목록을 먼저 업로드해주세요.'}
               </p>
             ) : (
               <div className="divide-y">
@@ -757,9 +713,12 @@ export default function ChromebooksPage() {
                     onClick={() => handleAssign(device)}
                     className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-blue-50 disabled:opacity-50"
                   >
-                    <span className="font-mono text-sm font-medium text-gray-900">
-                      {device.device_number}
-                    </span>
+                    <div>
+                      <span className="font-mono text-sm font-medium text-gray-900">{device.device_number}</span>
+                      {device.device_year && (
+                        <span className="ml-2 text-xs text-gray-400">{device.device_year}년</span>
+                      )}
+                    </div>
                     <span className="text-xs font-medium text-blue-600">배정 →</span>
                   </button>
                 ))}
@@ -823,12 +782,8 @@ export default function ChromebooksPage() {
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{studentFormErr}</p>
           )}
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="secondary" onClick={() => setStudentModal(false)}>
-              취소
-            </Button>
-            <Button loading={studentSaving} onClick={saveStudent}>
-              저장
-            </Button>
+            <Button variant="secondary" onClick={() => setStudentModal(false)}>취소</Button>
+            <Button loading={studentSaving} onClick={saveStudent}>저장</Button>
           </div>
         </div>
       </Modal>
