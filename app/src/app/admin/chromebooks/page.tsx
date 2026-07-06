@@ -93,7 +93,7 @@ export default function ChromebooksPage() {
   async function parseExcelFile(file: File): Promise<Record<string, unknown>[]> {
     const { read, utils } = await import('xlsx')
     const buf = await file.arrayBuffer()
-    const wb = read(buf, { type: 'array' })
+    const wb = read(new Uint8Array(buf), { type: 'array' })
     const ws = wb.Sheets[wb.SheetNames[0]]
     return utils.sheet_to_json(ws, { defval: '' }) as Record<string, unknown>[]
   }
@@ -169,29 +169,34 @@ export default function ChromebooksPage() {
 
   async function confirmUpload() {
     setUploadSaving(true)
+    setUploadErr('')
     const supabase = createClient()
 
+    try {
     if (uploadType === 'devices') {
       // 기존 기기 조회
-      const { data: existing } = await supabase.from('chromebooks').select('id, device_number')
+      const { data: existing, error: fetchErr } = await supabase.from('chromebooks').select('id, device_number')
+      if (fetchErr) throw new Error(`기기 목록 조회 실패: ${fetchErr.message}`)
       const existingMap = new Map((existing ?? []).map((c) => [c.device_number, c.id]))
 
       const toInsert = deviceUploadRows.filter((r) => !existingMap.has(r.device_number))
       const toUpdate = deviceUploadRows.filter((r) => existingMap.has(r.device_number))
 
       if (toInsert.length) {
-        await supabase.from('chromebooks').insert(
+        const { error: insertErr } = await supabase.from('chromebooks').insert(
           toInsert.map((r) => ({
             device_number: r.device_number,
             device_year: r.device_year || null,
           }))
         )
+        if (insertErr) throw new Error(`기기 등록 실패: ${insertErr.message}`)
       }
       for (const r of toUpdate) {
-        await supabase
+        const { error: updateErr } = await supabase
           .from('chromebooks')
           .update({ device_year: r.device_year || null })
           .eq('id', existingMap.get(r.device_number)!)
+        if (updateErr) throw new Error(`기기 업데이트 실패: ${updateErr.message}`)
       }
     } else if (uploadType === 'students') {
       const { data: existing } = await supabase
@@ -254,6 +259,10 @@ export default function ChromebooksPage() {
     setStudentUploadRows([])
     setDeviceUploadRows([])
     load()
+    } catch (err) {
+      setUploadErr(err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.')
+      setUploadSaving(false)
+    }
   }
 
   async function handleAssign(device: ChromebookWithStudent) {
