@@ -10,6 +10,15 @@ import { formatDate } from '@/lib/utils'
 type StudentWithDevice = Student & { chromebooks: Chromebook[] }
 type ChromebookWithStudent = Chromebook & { students: Student | null }
 
+type UploadRow = {
+  name: string
+  grade: string
+  class_name: string
+  student_number: string
+  device_number: string
+  _isNew: boolean
+}
+
 function findCol(row: Record<string, unknown>, candidates: string[]): string {
   const keys = Object.keys(row)
   for (const c of candidates) {
@@ -20,6 +29,9 @@ function findCol(row: Record<string, unknown>, candidates: string[]): string {
   return ''
 }
 
+const INPUT_CLS =
+  'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
+
 export default function ChromebooksPage() {
   const [students, setStudents] = useState<StudentWithDevice[]>([])
   const [chromebooks, setChromebooks] = useState<ChromebookWithStudent[]>([])
@@ -29,16 +41,26 @@ export default function ChromebooksPage() {
 
   // Upload
   const [uploadType, setUploadType] = useState<'students' | 'devices' | null>(null)
-  const [uploadRows, setUploadRows] = useState<Record<string, string>[]>([])
+  const [uploadRows, setUploadRows] = useState<UploadRow[]>([])
+  const [deviceUploadRows, setDeviceUploadRows] = useState<string[]>([])
   const [uploadSaving, setUploadSaving] = useState(false)
   const [uploadErr, setUploadErr] = useState('')
   const studentFileRef = useRef<HTMLInputElement>(null)
   const deviceFileRef = useRef<HTMLInputElement>(null)
 
-  // Assign
+  // Assign device
   const [assignTarget, setAssignTarget] = useState<StudentWithDevice | null>(null)
   const [deviceSearch, setDeviceSearch] = useState('')
   const [assigning, setAssigning] = useState(false)
+
+  // Student add/edit form
+  const [studentModal, setStudentModal] = useState(false)
+  const [editingStudent, setEditingStudent] = useState<StudentWithDevice | null>(null)
+  const [studentForm, setStudentForm] = useState({
+    name: '', grade: '', class_name: '', student_number: '',
+  })
+  const [studentSaving, setStudentSaving] = useState(false)
+  const [studentFormErr, setStudentFormErr] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -79,6 +101,7 @@ export default function ChromebooksPage() {
     try {
       const rows = await parseExcelFile(file)
       if (!rows.length) { setUploadErr('파일에 데이터가 없습니다.'); return }
+
       const parsed = rows
         .map((r) => ({
           name: findCol(r, ['이름', '성명', '학생명', 'name']),
@@ -87,12 +110,26 @@ export default function ChromebooksPage() {
           student_number: findCol(r, ['번호', '출석번호', '학번', 'number', 'no']),
           device_number: findCol(r, ['기기번호', '시리얼번호', '시리얼', 'serial', 'device']),
         }))
-        .filter((r) => r.name) as Record<string, string>[]
+        .filter((r) => r.name)
+
       if (!parsed.length) {
         setUploadErr('"이름" 열을 찾을 수 없습니다. 열 제목을 확인해주세요.')
         return
       }
-      setUploadRows(parsed)
+
+      // 기존 학생 조회 — 중복 여부 미리 표시
+      const supabase = createClient()
+      const { data: existing } = await supabase.from('students').select('name, grade, class_name')
+      const existingSet = new Set(
+        (existing ?? []).map((s) => `${s.name}|${s.grade ?? ''}|${s.class_name ?? ''}`)
+      )
+
+      const withMeta: UploadRow[] = parsed.map((r) => ({
+        ...r,
+        _isNew: !existingSet.has(`${r.name}|${r.grade}|${r.class_name}`),
+      }))
+
+      setUploadRows(withMeta)
       setUploadType('students')
     } catch {
       setUploadErr('파일을 읽을 수 없습니다. .xlsx 또는 .csv 파일을 사용해주세요.')
@@ -107,16 +144,16 @@ export default function ChromebooksPage() {
     try {
       const rows = await parseExcelFile(file)
       if (!rows.length) { setUploadErr('파일에 데이터가 없습니다.'); return }
+
       const parsed = rows
-        .map((r) => ({
-          device_number: findCol(r, ['기기번호', '시리얼번호', '시리얼', '번호', 'serial', 'device', 'number']),
-        }))
-        .filter((r) => r.device_number) as Record<string, string>[]
+        .map((r) => findCol(r, ['기기번호', '시리얼번호', '시리얼', '번호', 'serial', 'device', 'number']))
+        .filter(Boolean)
+
       if (!parsed.length) {
         setUploadErr('"기기번호" 열을 찾을 수 없습니다. 열 제목을 확인해주세요.')
         return
       }
-      setUploadRows(parsed)
+      setDeviceUploadRows(parsed)
       setUploadType('devices')
     } catch {
       setUploadErr('파일을 읽을 수 없습니다.')
@@ -131,32 +168,61 @@ export default function ChromebooksPage() {
       await supabase
         .from('chromebooks')
         .upsert(
-          uploadRows.map((r) => ({ device_number: r.device_number })),
+          deviceUploadRows.map((d) => ({ device_number: d })),
           { onConflict: 'device_number', ignoreDuplicates: true }
         )
     } else if (uploadType === 'students') {
-      for (const row of uploadRows) {
-        const { data: student } = await supabase
-          .from('students')
-          .insert({
-            name: row.name,
-            grade: row.grade || null,
-            class_name: row.class_name || null,
-            student_number: row.student_number || null,
-          })
-          .select('id')
-          .single()
+      // 최신 기존 학생 목록으로 dedup 맵 생성
+      const { data: existing } = await supabase
+        .from('students')
+        .select('id, name, grade, class_name')
+      const existingMap = new Map<string, string>()
+      for (const s of (existing ?? [])) {
+        existingMap.set(`${s.name}|${s.grade ?? ''}|${s.class_name ?? ''}`, s.id)
+      }
 
-        if (student && row.device_number) {
-          // 이미 이 학생에게 배정된 기기가 있으면 해제 후 새 기기 배정
+      for (const row of uploadRows) {
+        const key = `${row.name}|${row.grade}|${row.class_name}`
+        const existingId = existingMap.get(key)
+        let studentId: string
+
+        if (existingId) {
+          // 이미 있는 학생 — 학년·반·번호 덮어쓰기
+          await supabase
+            .from('students')
+            .update({
+              grade: row.grade || null,
+              class_name: row.class_name || null,
+              student_number: row.student_number || null,
+            })
+            .eq('id', existingId)
+          studentId = existingId
+        } else {
+          // 신규 학생 등록
+          const { data: s } = await supabase
+            .from('students')
+            .insert({
+              name: row.name,
+              grade: row.grade || null,
+              class_name: row.class_name || null,
+              student_number: row.student_number || null,
+            })
+            .select('id')
+            .single()
+          if (!s) continue
+          studentId = s.id
+        }
+
+        // 기기번호 있으면 기기 배정 덮어쓰기
+        if (row.device_number) {
           await supabase
             .from('chromebooks')
             .update({ student_id: null, assigned_at: null })
-            .eq('student_id', student.id)
+            .eq('student_id', studentId)
           await supabase.from('chromebooks').upsert(
             {
               device_number: row.device_number,
-              student_id: student.id,
+              student_id: studentId,
               assigned_at: new Date().toISOString(),
             },
             { onConflict: 'device_number' }
@@ -168,6 +234,7 @@ export default function ChromebooksPage() {
     setUploadSaving(false)
     setUploadType(null)
     setUploadRows([])
+    setDeviceUploadRows([])
     load()
   }
 
@@ -175,12 +242,10 @@ export default function ChromebooksPage() {
     if (!assignTarget) return
     setAssigning(true)
     const supabase = createClient()
-    // 기존 배정 기기 해제
     await supabase
       .from('chromebooks')
       .update({ student_id: null, assigned_at: null })
       .eq('student_id', assignTarget.id)
-    // 새 기기 배정
     await supabase
       .from('chromebooks')
       .update({ student_id: assignTarget.id, assigned_at: new Date().toISOString() })
@@ -201,12 +266,53 @@ export default function ChromebooksPage() {
   }
 
   async function handleDeleteStudent(student: Student) {
-    if (!confirm(`"${student.name}" 학생을 삭제하시겠습니까? 배정된 기기는 미배정 상태로 변경됩니다.`)) return
+    if (!confirm(`"${student.name}" 학생을 삭제하시겠습니까? 배정된 기기는 미배정 상태로 변경됩니다.`))
+      return
     const supabase = createClient()
     await supabase.from('students').delete().eq('id', student.id)
     load()
   }
 
+  function openAddStudent() {
+    setEditingStudent(null)
+    setStudentForm({ name: '', grade: '', class_name: '', student_number: '' })
+    setStudentFormErr('')
+    setStudentModal(true)
+  }
+
+  function openEditStudent(s: StudentWithDevice) {
+    setEditingStudent(s)
+    setStudentForm({
+      name: s.name,
+      grade: s.grade ?? '',
+      class_name: s.class_name ?? '',
+      student_number: s.student_number ?? '',
+    })
+    setStudentFormErr('')
+    setStudentModal(true)
+  }
+
+  async function saveStudent() {
+    if (!studentForm.name.trim()) { setStudentFormErr('이름을 입력해주세요.'); return }
+    setStudentSaving(true)
+    const supabase = createClient()
+    const payload = {
+      name: studentForm.name.trim(),
+      grade: studentForm.grade.trim() || null,
+      class_name: studentForm.class_name.trim() || null,
+      student_number: studentForm.student_number.trim() || null,
+    }
+    if (editingStudent) {
+      await supabase.from('students').update(payload).eq('id', editingStudent.id)
+    } else {
+      await supabase.from('students').insert(payload)
+    }
+    setStudentSaving(false)
+    setStudentModal(false)
+    load()
+  }
+
+  // Filter
   const filteredStudents = students.filter((s) => {
     if (!search) return true
     const q = search.toLowerCase()
@@ -235,14 +341,19 @@ export default function ChromebooksPage() {
   const unassignedDeviceCount = chromebooks.filter((c) => !c.student_id).length
 
   function gradeLabel(s: Student) {
-    return [
-      s.grade ? `${s.grade}학년` : '',
-      s.class_name ? `${s.class_name}반` : '',
-      s.student_number ? `${s.student_number}번` : '',
-    ]
-      .filter(Boolean)
-      .join(' ') || '-'
+    return (
+      [
+        s.grade ? `${s.grade}학년` : '',
+        s.class_name ? `${s.class_name}반` : '',
+        s.student_number ? `${s.student_number}번` : '',
+      ]
+        .filter(Boolean)
+        .join(' ') || '-'
+    )
   }
+
+  const newCount = uploadRows.filter((r) => r._isNew).length
+  const updateCount = uploadRows.filter((r) => !r._isNew).length
 
   return (
     <div>
@@ -251,7 +362,8 @@ export default function ChromebooksPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">크롬북 관리</h1>
           <p className="mt-1 text-sm text-gray-500">
-            학생 {students.length}명 · 기기 배정 완료 {assignedCount}명 · 미배정 기기 {unassignedDeviceCount}대
+            학생 {students.length}명 · 기기 배정 완료 {assignedCount}명 · 미배정 기기{' '}
+            {unassignedDeviceCount}대
           </p>
         </div>
         <div className="flex gap-2">
@@ -269,10 +381,23 @@ export default function ChromebooksPage() {
             className="hidden"
             onChange={handleDeviceFile}
           />
-          <Button variant="secondary" onClick={() => { setUploadErr(''); studentFileRef.current?.click() }}>
+          <Button onClick={openAddStudent}>+ 학생 추가</Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setUploadErr('')
+              studentFileRef.current?.click()
+            }}
+          >
             학생 명단 업로드
           </Button>
-          <Button variant="secondary" onClick={() => { setUploadErr(''); deviceFileRef.current?.click() }}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setUploadErr('')
+              deviceFileRef.current?.click()
+            }}
+          >
             기기 목록 업로드
           </Button>
         </div>
@@ -281,12 +406,11 @@ export default function ChromebooksPage() {
       {/* 엑셀 양식 안내 */}
       <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
         <strong>엑셀 열 제목 안내</strong>
-        <span className="ml-2 text-blue-600">
-          학생 명단: <code className="rounded bg-blue-100 px-1">이름</code>{' '}
-          <code className="rounded bg-blue-100 px-1">학년</code>{' '}
-          <code className="rounded bg-blue-100 px-1">반</code>{' '}
-          <code className="rounded bg-blue-100 px-1">번호</code>{' '}
-          <code className="rounded bg-blue-100 px-1">기기번호</code>(선택)
+        <span className="ml-2">
+          학생 명단:{' '}
+          {['이름', '학년', '반', '번호', '기기번호(선택)'].map((t) => (
+            <code key={t} className="mr-1 rounded bg-blue-100 px-1">{t}</code>
+          ))}
           &nbsp;·&nbsp; 기기 목록:{' '}
           <code className="rounded bg-blue-100 px-1">기기번호</code>
         </span>
@@ -299,26 +423,24 @@ export default function ChromebooksPage() {
       {/* Tabs + Search */}
       <div className="mb-4 flex items-center gap-3">
         <div className="flex gap-2">
-          <button
-            onClick={() => setTab('students')}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              tab === 'students'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            학생 현황 ({students.length})
-          </button>
-          <button
-            onClick={() => setTab('devices')}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              tab === 'devices'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            기기 목록 ({chromebooks.length})
-          </button>
+          {(
+            [
+              { value: 'students', label: `학생 현황 (${students.length})` },
+              { value: 'devices', label: `기기 목록 (${chromebooks.length})` },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setTab(t.value)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                tab === t.value
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
         <input
           type="text"
@@ -329,17 +451,25 @@ export default function ChromebooksPage() {
         />
       </div>
 
-      {/* Student Table */}
       {loading ? (
         <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
       ) : tab === 'students' ? (
+        /* Student Table */
         <div className="rounded-xl bg-white shadow-sm">
           {filteredStudents.length === 0 ? (
-            <p className="py-12 text-center text-sm text-gray-400">
-              {search
-                ? '검색 결과가 없습니다.'
-                : '등록된 학생이 없습니다. 학생 명단을 업로드해주세요.'}
-            </p>
+            <div className="py-12 text-center">
+              <p className="text-sm text-gray-400">
+                {search ? '검색 결과가 없습니다.' : '등록된 학생이 없습니다.'}
+              </p>
+              {!search && (
+                <button
+                  onClick={openAddStudent}
+                  className="mt-3 text-sm font-medium text-blue-600 hover:underline"
+                >
+                  + 학생 직접 추가
+                </button>
+              )}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -394,6 +524,13 @@ export default function ChromebooksPage() {
                             <Button
                               size="sm"
                               variant="secondary"
+                              onClick={() => openEditStudent(s)}
+                            >
+                              수정
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
                               onClick={() => handleDeleteStudent(s)}
                             >
                               삭제
@@ -413,9 +550,7 @@ export default function ChromebooksPage() {
         <div className="rounded-xl bg-white shadow-sm">
           {filteredDevices.length === 0 ? (
             <p className="py-12 text-center text-sm text-gray-400">
-              {search
-                ? '검색 결과가 없습니다.'
-                : '등록된 기기가 없습니다. 기기 목록을 업로드해주세요.'}
+              {search ? '검색 결과가 없습니다.' : '등록된 기기가 없습니다. 기기 목록을 업로드해주세요.'}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -479,21 +614,27 @@ export default function ChromebooksPage() {
         onClose={() => {
           setUploadType(null)
           setUploadRows([])
+          setDeviceUploadRows([])
         }}
         title={uploadType === 'students' ? '학생 명단 업로드 확인' : '기기 목록 업로드 확인'}
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-700">
             {uploadType === 'students' ? (
               <>
-                총 <strong>{uploadRows.length}명</strong>의 학생 데이터를 등록합니다.
-                <span className="ml-1 text-yellow-600">
-                  (같은 파일을 중복 업로드하면 학생이 중복 등록될 수 있습니다.)
-                </span>
+                총 <strong>{uploadRows.length}명</strong> —{' '}
+                <span className="text-blue-600">신규 {newCount}명</span>
+                {updateCount > 0 && (
+                  <span className="ml-1 text-orange-600">
+                    / 업데이트 {updateCount}명{' '}
+                    <span className="font-normal text-gray-500">(학년·반·번호·기기번호 덮어쓰기)</span>
+                  </span>
+                )}
               </>
             ) : (
               <>
-                총 <strong>{uploadRows.length}개</strong>의 기기 번호를 등록합니다. 이미 등록된 기기번호는 무시됩니다.
+                총 <strong>{deviceUploadRows.length}개</strong>의 기기 번호를 등록합니다.
+                이미 등록된 기기번호는 무시됩니다.
               </>
             )}
           </p>
@@ -504,6 +645,7 @@ export default function ChromebooksPage() {
                 <tr>
                   {uploadType === 'students' ? (
                     <>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">구분</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500">이름</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500">학년</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500">반</th>
@@ -516,30 +658,38 @@ export default function ChromebooksPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {uploadRows.slice(0, 50).map((row, i) =>
-                  uploadType === 'students' ? (
-                    <tr key={i}>
-                      <td className="px-3 py-1.5 font-medium">{row.name}</td>
-                      <td className="px-3 py-1.5 text-gray-500">{row.grade || '-'}</td>
-                      <td className="px-3 py-1.5 text-gray-500">{row.class_name || '-'}</td>
-                      <td className="px-3 py-1.5 text-gray-500">{row.student_number || '-'}</td>
-                      <td className="px-3 py-1.5 font-mono text-blue-700">
-                        {row.device_number || '-'}
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr key={i}>
-                      <td className="px-3 py-1.5 font-mono">{row.device_number}</td>
-                    </tr>
-                  )
-                )}
-                {uploadRows.length > 50 && (
+                {uploadType === 'students'
+                  ? uploadRows.slice(0, 50).map((row, i) => (
+                      <tr key={i} className={row._isNew ? '' : 'bg-orange-50/60'}>
+                        <td className="px-3 py-1.5">
+                          {row._isNew ? (
+                            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-blue-700">신규</span>
+                          ) : (
+                            <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-orange-700">업데이트</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 font-medium">{row.name}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{row.grade || '-'}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{row.class_name || '-'}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{row.student_number || '-'}</td>
+                        <td className="px-3 py-1.5 font-mono text-blue-700">
+                          {row.device_number || '-'}
+                        </td>
+                      </tr>
+                    ))
+                  : deviceUploadRows.slice(0, 50).map((d, i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-1.5 font-mono">{d}</td>
+                      </tr>
+                    ))}
+                {(uploadType === 'students' ? uploadRows : deviceUploadRows).length > 50 && (
                   <tr>
                     <td
-                      colSpan={uploadType === 'students' ? 5 : 1}
+                      colSpan={uploadType === 'students' ? 6 : 1}
                       className="px-3 py-2 text-center text-gray-400"
                     >
-                      ... 외 {uploadRows.length - 50}개
+                      ... 외{' '}
+                      {(uploadType === 'students' ? uploadRows : deviceUploadRows).length - 50}개
                     </td>
                   </tr>
                 )}
@@ -553,6 +703,7 @@ export default function ChromebooksPage() {
               onClick={() => {
                 setUploadType(null)
                 setUploadRows([])
+                setDeviceUploadRows([])
               }}
             >
               취소
@@ -587,7 +738,7 @@ export default function ChromebooksPage() {
             value={deviceSearch}
             onChange={(e) => setDeviceSearch(e.target.value)}
             placeholder="기기번호 검색..."
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={INPUT_CLS}
             autoFocus
           />
           <div className="max-h-72 overflow-y-auto rounded-lg border">
@@ -614,6 +765,70 @@ export default function ChromebooksPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Student Add / Edit Modal */}
+      <Modal
+        open={studentModal}
+        onClose={() => setStudentModal(false)}
+        title={editingStudent ? '학생 정보 수정' : '학생 추가'}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">이름 *</label>
+            <input
+              type="text"
+              value={studentForm.name}
+              onChange={(e) => setStudentForm({ ...studentForm, name: e.target.value })}
+              placeholder="홍길동"
+              className={INPUT_CLS}
+              autoFocus
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">학년</label>
+              <input
+                type="text"
+                value={studentForm.grade}
+                onChange={(e) => setStudentForm({ ...studentForm, grade: e.target.value })}
+                placeholder="3"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">반</label>
+              <input
+                type="text"
+                value={studentForm.class_name}
+                onChange={(e) => setStudentForm({ ...studentForm, class_name: e.target.value })}
+                placeholder="2"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">번호</label>
+              <input
+                type="text"
+                value={studentForm.student_number}
+                onChange={(e) => setStudentForm({ ...studentForm, student_number: e.target.value })}
+                placeholder="15"
+                className={INPUT_CLS}
+              />
+            </div>
+          </div>
+          {studentFormErr && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{studentFormErr}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => setStudentModal(false)}>
+              취소
+            </Button>
+            <Button loading={studentSaving} onClick={saveStudent}>
+              저장
+            </Button>
           </div>
         </div>
       </Modal>
