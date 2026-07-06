@@ -66,6 +66,7 @@ export default function ChromebooksPage() {
   })
   const [studentSaving, setStudentSaving] = useState(false)
   const [studentFormErr, setStudentFormErr] = useState('')
+  const [exporting, setExporting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -300,6 +301,32 @@ export default function ChromebooksPage() {
     load()
   }
 
+  async function handleExport() {
+    setExporting(true)
+    const { utils, writeFile } = await import('xlsx')
+
+    const rows = students.map((s) => {
+      const device = s.chromebooks?.[0]
+      return {
+        '학년': s.grade ?? '',
+        '반': s.class_name ?? '',
+        '번호': s.student_number ?? '',
+        '이름': s.name,
+        '기기번호': device?.device_number ?? '',
+        '기기년도': device?.device_year ?? '',
+      }
+    })
+
+    const ws = utils.json_to_sheet(rows)
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 12 }, { wch: 22 }, { wch: 10 },
+    ]
+    const wb = utils.book_new()
+    utils.book_append_sheet(wb, ws, '크롬북 현황')
+    writeFile(wb, '크롬북_현황.xlsx')
+    setExporting(false)
+  }
+
   function openAddStudent() {
     setEditingStudent(null)
     setStudentForm({ name: '', grade: '', class_name: '', student_number: '' })
@@ -396,6 +423,9 @@ export default function ChromebooksPage() {
         <div className="flex gap-2">
           <input ref={studentFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleStudentFile} />
           <input ref={deviceFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleDeviceFile} />
+          <Button variant="secondary" loading={exporting} onClick={handleExport}>
+            내보내기
+          </Button>
           <Button onClick={openAddStudent}>+ 학생 추가</Button>
           <Button variant="secondary" onClick={() => { setUploadErr(''); studentFileRef.current?.click() }}>
             학생 명단 업로드
