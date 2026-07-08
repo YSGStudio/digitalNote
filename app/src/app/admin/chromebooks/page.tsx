@@ -66,6 +66,10 @@ export default function ChromebooksPage() {
   })
   const [studentSaving, setStudentSaving] = useState(false)
   const [studentFormErr, setStudentFormErr] = useState('')
+  const [deviceModal, setDeviceModal] = useState(false)
+  const [deviceForm, setDeviceForm] = useState({ device_number: '', device_year: '' })
+  const [deviceFormSaving, setDeviceFormSaving] = useState(false)
+  const [deviceFormErr, setDeviceFormErr] = useState('')
   const [exporting, setExporting] = useState(false)
   const [filterGrade, setFilterGrade] = useState('')
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set())
@@ -303,6 +307,26 @@ export default function ChromebooksPage() {
     load()
   }
 
+  async function saveDevice() {
+    if (!deviceForm.device_number.trim()) { setDeviceFormErr('기기번호를 입력해주세요.'); return }
+    setDeviceFormSaving(true)
+    setDeviceFormErr('')
+    const supabase = createClient()
+    const { error } = await supabase.from('chromebooks').insert({
+      device_number: deviceForm.device_number.trim(),
+      device_year: deviceForm.device_year.trim() || null,
+    })
+    if (error) {
+      setDeviceFormErr(error.code === '23505' ? '이미 등록된 기기번호입니다.' : error.message)
+      setDeviceFormSaving(false)
+      return
+    }
+    setDeviceFormSaving(false)
+    setDeviceModal(false)
+    setDeviceForm({ device_number: '', device_year: '' })
+    load()
+  }
+
   async function handleDeleteDevice(id: string) {
     if (!confirm('기기를 삭제하시겠습니까? 배정된 학생 데이터는 유지됩니다.')) return
     const supabase = createClient()
@@ -447,6 +471,9 @@ export default function ChromebooksPage() {
           <input ref={deviceFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleDeviceFile} />
           <Button variant="secondary" loading={exporting} onClick={handleExport}>
             내보내기
+          </Button>
+          <Button variant="secondary" onClick={() => { setDeviceForm({ device_number: '', device_year: '' }); setDeviceFormErr(''); setDeviceModal(true) }}>
+            + 기기 추가
           </Button>
           <Button onClick={openAddStudent}>+ 학생 추가</Button>
           <Button variant="secondary" onClick={() => { setUploadErr(''); studentFileRef.current?.click() }}>
@@ -900,6 +927,46 @@ export default function ChromebooksPage() {
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="secondary" onClick={() => setStudentModal(false)}>취소</Button>
             <Button loading={studentSaving} onClick={saveStudent}>저장</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Device Add Modal */}
+      <Modal
+        open={deviceModal}
+        onClose={() => setDeviceModal(false)}
+        title="기기 추가"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">기기번호 *</label>
+            <input
+              type="text"
+              value={deviceForm.device_number}
+              onChange={(e) => setDeviceForm({ ...deviceForm, device_number: e.target.value })}
+              placeholder="예) ABC-12345"
+              className={INPUT_CLS}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              기기년도 <span className="font-normal text-gray-400">(선택)</span>
+            </label>
+            <input
+              type="text"
+              value={deviceForm.device_year}
+              onChange={(e) => setDeviceForm({ ...deviceForm, device_year: e.target.value })}
+              placeholder="예) 2023"
+              className={INPUT_CLS}
+            />
+          </div>
+          {deviceFormErr && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{deviceFormErr}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => setDeviceModal(false)}>취소</Button>
+            <Button loading={deviceFormSaving} onClick={saveDevice}>추가</Button>
           </div>
         </div>
       </Modal>
