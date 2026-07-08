@@ -68,6 +68,8 @@ export default function ChromebooksPage() {
   const [studentFormErr, setStudentFormErr] = useState('')
   const [exporting, setExporting] = useState(false)
   const [filterGrade, setFilterGrade] = useState('')
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set())
+  const [deletingDevices, setDeletingDevices] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -301,6 +303,25 @@ export default function ChromebooksPage() {
     load()
   }
 
+  async function handleDeleteDevice(id: string) {
+    if (!confirm('기기를 삭제하시겠습니까? 배정된 학생 데이터는 유지됩니다.')) return
+    const supabase = createClient()
+    await supabase.from('chromebooks').delete().eq('id', id)
+    setSelectedDeviceIds((prev) => { const next = new Set(prev); next.delete(id); return next })
+    load()
+  }
+
+  async function handleDeleteSelectedDevices() {
+    if (!selectedDeviceIds.size) return
+    if (!confirm(`선택한 기기 ${selectedDeviceIds.size}개를 삭제하시겠습니까?\n배정된 학생 데이터는 유지됩니다.`)) return
+    setDeletingDevices(true)
+    const supabase = createClient()
+    await supabase.from('chromebooks').delete().in('id', [...selectedDeviceIds])
+    setSelectedDeviceIds(new Set())
+    setDeletingDevices(false)
+    load()
+  }
+
   async function handleExport() {
     setExporting(true)
     const { utils, writeFile } = await import('xlsx')
@@ -467,7 +488,7 @@ export default function ChromebooksPage() {
           ).map((t) => (
             <button
               key={t.value}
-              onClick={() => setTab(t.value)}
+              onClick={() => { setTab(t.value); setSelectedDeviceIds(new Set()) }}
               className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
                 tab === t.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
               }`}
@@ -493,6 +514,15 @@ export default function ChromebooksPage() {
             <option key={g} value={g}>{g}학년</option>
           ))}
         </select>
+        {tab === 'devices' && selectedDeviceIds.size > 0 && (
+          <button
+            onClick={handleDeleteSelectedDevices}
+            disabled={deletingDevices}
+            className="ml-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-50"
+          >
+            {deletingDevices ? '삭제 중...' : `선택 삭제 (${selectedDeviceIds.size}개)`}
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -582,17 +612,45 @@ export default function ChromebooksPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-gray-50 text-left text-gray-500">
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300"
+                        checked={filteredDevices.length > 0 && filteredDevices.every((c) => selectedDeviceIds.has(c.id))}
+                        onChange={(e) =>
+                          setSelectedDeviceIds(
+                            e.target.checked ? new Set(filteredDevices.map((c) => c.id)) : new Set()
+                          )
+                        }
+                      />
+                    </th>
                     <th className="px-4 py-3 font-medium">기기번호</th>
                     <th className="px-4 py-3 font-medium">기기년도</th>
                     <th className="px-4 py-3 font-medium">배정 학생</th>
                     <th className="px-4 py-3 font-medium">학년 / 반</th>
                     <th className="px-4 py-3 font-medium">배정일</th>
                     <th className="px-4 py-3 font-medium">상태</th>
+                    <th className="px-4 py-3 font-medium"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {filteredDevices.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-50">
+                    <tr key={c.id} className={`hover:bg-gray-50 ${selectedDeviceIds.has(c.id) ? 'bg-red-50/40' : ''}`}>
+                      <td className="w-10 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300"
+                          checked={selectedDeviceIds.has(c.id)}
+                          onChange={(e) =>
+                            setSelectedDeviceIds((prev) => {
+                              const next = new Set(prev)
+                              if (e.target.checked) next.add(c.id)
+                              else next.delete(c.id)
+                              return next
+                            })
+                          }
+                        />
+                      </td>
                       <td className="px-4 py-3 font-mono font-medium">{c.device_number}</td>
                       <td className="px-4 py-3 text-gray-500">{c.device_year ?? '-'}</td>
                       <td className="px-4 py-3">
@@ -625,6 +683,14 @@ export default function ChromebooksPage() {
                             미배정
                           </span>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => handleDeleteDevice(c.id)}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          삭제
+                        </button>
                       </td>
                     </tr>
                   ))}
