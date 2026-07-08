@@ -90,7 +90,19 @@ export default function ChromebooksPage() {
         .select('*, students(*)')
         .order('device_number', { ascending: true }),
     ])
-    setStudents((studs as StudentWithDevice[]) ?? [])
+    // PostgREST treats UNIQUE FK (student_id) as 1:1, returning an object instead of array.
+    // Normalize to always be an array.
+    // PostgREST treats UNIQUE FK (student_id) as 1:1, returning an object instead of array.
+    // Normalize to always be an array.
+    const normalizedStuds: StudentWithDevice[] = (studs ?? []).map((s: unknown) => {
+      const row = s as StudentWithDevice & { chromebooks: unknown }
+      const cb = row.chromebooks
+      return {
+        ...row,
+        chromebooks: cb == null ? [] : Array.isArray(cb) ? cb : [cb as Chromebook],
+      }
+    })
+    setStudents(normalizedStuds)
     setChromebooks((devs as ChromebookWithStudent[]) ?? [])
     setLoading(false)
   }, [])
