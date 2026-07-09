@@ -3,29 +3,37 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
 import { TutorSupport } from '@/types'
+import { useSchool } from '@/lib/school-context'
 
 export default function AdminTutorPage() {
+  const { schoolId, loading: schoolLoading } = useSchool()
   const [supports, setSupports] = useState<TutorSupport[]>([])
   const [loading, setLoading] = useState(true)
   const [filterDate, setFilterDate] = useState('')
 
   const load = useCallback(async () => {
+    if (!schoolId) return
     setLoading(true)
     const supabase = createClient()
     let query = supabase
       .from('tutor_supports')
       .select('*, classrooms(class_name)')
+      .eq('school_id', schoolId)
       .order('support_date', { ascending: false })
       .order('created_at', { ascending: false })
     if (filterDate) query = query.eq('support_date', filterDate)
     const { data } = await query
     setSupports((data as TutorSupport[]) ?? [])
     setLoading(false)
-  }, [filterDate])
+  }, [filterDate, schoolId])
 
   useEffect(() => { load() }, [load])
 
   const totalCount = supports.length
+
+  if (schoolLoading) {
+    return <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
+  }
 
   return (
     <div>

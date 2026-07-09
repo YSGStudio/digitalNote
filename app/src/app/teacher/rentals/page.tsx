@@ -20,6 +20,7 @@ function toLocalDateString(date: Date) {
 export default function TeacherRentalsPage() {
   const router = useRouter()
   const [classroomId, setClassroomId] = useState('')
+  const [schoolId, setSchoolId] = useState('')
   const [tab, setTab] = useState<'all' | 'my'>('all')
   const [allRentals, setAllRentals] = useState<Rental[]>([])
   const [myRentals, setMyRentals] = useState<Rental[]>([])
@@ -30,12 +31,13 @@ export default function TeacherRentalsPage() {
   const [requesting, setRequesting] = useState<string | null>(null)
   const [error, setError] = useState('')
 
-  const load = useCallback(async (cid: string) => {
+  const load = useCallback(async (cid: string, sid: string) => {
     const supabase = createClient()
     const [{ data: all }, { data: my }, { data: devs }] = await Promise.all([
       supabase
         .from('rentals')
         .select('*, classrooms(class_name), shared_devices(device_name)')
+        .eq('school_id', sid)
         .in('status', ['대여 중', '반납 요청 중'])
         .order('rented_at', { ascending: false }),
       supabase
@@ -43,7 +45,12 @@ export default function TeacherRentalsPage() {
         .select('*, classrooms(class_name), shared_devices(device_name)')
         .eq('classroom_id', cid)
         .order('rented_at', { ascending: false }),
-      supabase.from('shared_devices').select('*').eq('is_active', true).order('device_name'),
+      supabase
+        .from('shared_devices')
+        .select('*')
+        .eq('school_id', sid)
+        .eq('is_active', true)
+        .order('device_name'),
     ])
     setAllRentals((all as Rental[]) ?? [])
     setMyRentals((my as Rental[]) ?? [])
@@ -54,7 +61,8 @@ export default function TeacherRentalsPage() {
     const session = getTeacherSession()
     if (!session) { router.push('/login/teacher'); return }
     setClassroomId(session.classroomId)
-    load(session.classroomId)
+    setSchoolId(session.school_id)
+    load(session.classroomId, session.school_id)
   }, [router, load])
 
   async function handleRent() {
@@ -75,6 +83,7 @@ export default function TeacherRentalsPage() {
     const supabase = createClient()
     await Promise.all([
       supabase.from('rentals').insert({
+        school_id: schoolId,
         classroom_id: classroomId,
         device_id: form.device_id,
         quantity: qty,
@@ -90,7 +99,7 @@ export default function TeacherRentalsPage() {
     setSubmitting(false)
     setModalOpen(false)
     setForm({ device_id: '', quantity: '1', rental_date: '', description: '' })
-    load(classroomId)
+    load(classroomId, schoolId)
   }
 
   async function handleReturnRequest(rental: Rental) {
@@ -101,7 +110,7 @@ export default function TeacherRentalsPage() {
       .update({ status: '반납 요청 중' })
       .eq('id', rental.id)
     setRequesting(null)
-    load(classroomId)
+    load(classroomId, schoolId)
   }
 
   const displayedRentals = tab === 'all' ? allRentals : myRentals
@@ -158,12 +167,7 @@ export default function TeacherRentalsPage() {
                     {tab === 'my' && (
                       <td className="px-4 py-3">
                         {r.status === '대여 중' && (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            loading={requesting === r.id}
-                            onClick={() => handleReturnRequest(r)}
-                          >
+                          <Button size="sm" variant="secondary" loading={requesting === r.id} onClick={() => handleReturnRequest(r)}>
                             반납 요청
                           </Button>
                         )}

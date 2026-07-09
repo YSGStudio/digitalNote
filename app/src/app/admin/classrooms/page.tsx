@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { Classroom, ClassroomDevice, Device } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { useSchool } from '@/lib/school-context'
 
 interface DeviceSummary {
   device_type: string
@@ -18,6 +19,7 @@ interface ClassroomWithDevices extends Classroom {
 }
 
 export default function AdminClassroomsPage() {
+  const { schoolId, loading: schoolLoading } = useSchool()
   const [classrooms, setClassrooms] = useState<ClassroomWithDevices[]>([])
   const [loading, setLoading] = useState(true)
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -27,7 +29,6 @@ export default function AdminClassroomsPage() {
   const [saveError, setSaveError] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
 
-  // 기기 편집 관련
   const [allDevices, setAllDevices] = useState<Device[]>([])
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [editMode, setEditMode] = useState(false)
@@ -36,19 +37,23 @@ export default function AdminClassroomsPage() {
   const [devicesLoading, setDevicesLoading] = useState(false)
 
   const load = useCallback(async () => {
+    if (!schoolId) return
     setLoading(true)
     const supabase = createClient()
     const [{ data: rooms }, { data: allDevs }] = await Promise.all([
-      supabase.from('classrooms').select('*').order('class_name'),
+      supabase.from('classrooms').select('*').eq('school_id', schoolId).order('class_name'),
       supabase
         .from('classroom_devices')
         .select('classroom_id, quantity, updated_at, devices(device_type)')
         .gt('quantity', 0),
     ])
 
+    const schoolRoomIds = new Set(((rooms as Classroom[]) ?? []).map((r) => r.id))
+
     const deviceMap: Record<string, DeviceSummary[]> = {}
     const lastUpdatedMap: Record<string, string> = {}
     ;(allDevs as unknown as ClassroomDevice[])?.forEach((d) => {
+      if (!schoolRoomIds.has(d.classroom_id)) return
       if (!deviceMap[d.classroom_id]) deviceMap[d.classroom_id] = []
       if (d.devices?.device_type) {
         deviceMap[d.classroom_id].push({ device_type: d.devices.device_type, quantity: d.quantity })
@@ -71,7 +76,7 @@ export default function AdminClassroomsPage() {
 
     setClassrooms(withDevices)
     setLoading(false)
-  }, [])
+  }, [schoolId])
 
   useEffect(() => { load() }, [load])
 
@@ -131,10 +136,8 @@ export default function AdminClassroomsPage() {
       return
     }
 
-    // 그리드 카드도 갱신
     await load()
 
-    // 상세 모달의 deviceSummary도 최신화
     setClassrooms((prev) => {
       const updated = prev.find((c) => c.id === detailClassroom.id)
       if (updated) setDetailClassroom(updated)
@@ -153,10 +156,12 @@ export default function AdminClassroomsPage() {
 
   async function handleAdd() {
     if (!form.class_name.trim()) { setSaveError('학급명을 입력해주세요.'); return }
+    if (!schoolId) return
     setSaving(true)
     setSaveError('')
     const supabase = createClient()
     const { error } = await supabase.from('classrooms').insert({
+      school_id: schoolId,
       class_name: form.class_name.trim(),
       teacher_name: form.teacher_name.trim() || null,
     })
@@ -188,9 +193,12 @@ export default function AdminClassroomsPage() {
     return acc
   }, {} as Record<string, number>)
 
+  if (schoolLoading) {
+    return <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
+  }
+
   return (
     <div>
-      {/* 헤더 */}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">학급 등록·관리</h1>
@@ -203,7 +211,6 @@ export default function AdminClassroomsPage() {
         <Button onClick={openAddModal}>+ 학급 추가</Button>
       </div>
 
-      {/* 기기 종류별 합계 */}
       {!loading && classrooms.length > 0 && Object.keys(deviceTotals).length > 0 && (
         <div className="mb-5 rounded-xl bg-white p-4 shadow-sm">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">기기 종류별 합계</p>
@@ -220,7 +227,6 @@ export default function AdminClassroomsPage() {
         </div>
       )}
 
-      {/* 스켈레톤 로딩 */}
       {loading && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {[...Array(6)].map((_, i) => (
@@ -229,7 +235,6 @@ export default function AdminClassroomsPage() {
         </div>
       )}
 
-      {/* 빈 상태 */}
       {!loading && classrooms.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 py-24">
           <span className="mb-4 text-5xl">🏫</span>
@@ -239,7 +244,6 @@ export default function AdminClassroomsPage() {
         </div>
       )}
 
-      {/* 그리드 */}
       {!loading && classrooms.length > 0 && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {classrooms.map((c) => (
@@ -248,7 +252,6 @@ export default function AdminClassroomsPage() {
               onClick={() => openDetail(c)}
               className="group relative flex cursor-pointer flex-col rounded-xl bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
             >
-              {/* 삭제 버튼 */}
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(c.id, c.class_name) }}
                 disabled={deleting === c.id}
@@ -306,18 +309,11 @@ export default function AdminClassroomsPage() {
         </div>
       )}
 
-      {/* 상세 / 편집 모달 */}
-      <Modal
-        open={detailClassroom !== null}
-        onClose={closeDetail}
-        title={detailClassroom?.class_name ?? ''}
-      >
+      <Modal open={detailClassroom !== null} onClose={closeDetail} title={detailClassroom?.class_name ?? ''}>
         {detailClassroom && (
           <div>
             <p className="mb-4 text-sm text-gray-500">
-              {detailClassroom.teacher_name
-                ? `${detailClassroom.teacher_name} 선생님`
-                : '담당 교사 미입력'}
+              {detailClassroom.teacher_name ? `${detailClassroom.teacher_name} 선생님` : '담당 교사 미입력'}
             </p>
 
             {devicesLoading ? (
@@ -382,15 +378,11 @@ export default function AdminClassroomsPage() {
                 <div className="mt-4 flex justify-end gap-2">
                   {editMode ? (
                     <>
-                      <Button variant="secondary" onClick={() => { setEditMode(false); setEditError('') }}>
-                        취소
-                      </Button>
+                      <Button variant="secondary" onClick={() => { setEditMode(false); setEditError('') }}>취소</Button>
                       <Button loading={editSaving} onClick={handleEditSave}>저장</Button>
                     </>
                   ) : (
-                    <Button variant="secondary" onClick={() => setEditMode(true)}>
-                      기기 수량 편집
-                    </Button>
+                    <Button variant="secondary" onClick={() => setEditMode(true)}>기기 수량 편집</Button>
                   )}
                 </div>
               </>
@@ -399,7 +391,6 @@ export default function AdminClassroomsPage() {
         )}
       </Modal>
 
-      {/* 추가 모달 */}
       <Modal open={addModalOpen} onClose={() => setAddModalOpen(false)} title="학급 추가">
         <div className="space-y-4">
           <div>

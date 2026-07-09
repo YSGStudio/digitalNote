@@ -110,6 +110,7 @@ function Calendar({
 export default function TeacherTutorPage() {
   const router = useRouter()
   const [classroomId, setClassroomId] = useState('')
+  const [schoolId, setSchoolId] = useState('')
   const [selectedDate, setSelectedDate] = useState(toLocalDateString(new Date()))
   const [selectedPeriod, setSelectedPeriod] = useState('')
   const [content, setContent] = useState('')
@@ -120,7 +121,6 @@ export default function TeacherTutorPage() {
   const [dateLoading, setDateLoading] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
 
-  // 내 전체 신청 내역 로드 (달력 점 표시용)
   const loadMine = useCallback(async (cid: string) => {
     const supabase = createClient()
     const { data } = await supabase
@@ -131,13 +131,14 @@ export default function TeacherTutorPage() {
     setAllSupports((data as TutorSupport[]) ?? [])
   }, [])
 
-  // 선택한 날짜의 전체 학급 신청 목록 로드
-  const loadDate = useCallback(async (date: string) => {
+  const loadDate = useCallback(async (date: string, sid: string) => {
+    if (!sid) return
     setDateLoading(true)
     const supabase = createClient()
     const { data } = await supabase
       .from('tutor_supports')
       .select('*, classrooms(class_name)')
+      .eq('school_id', sid)
       .eq('support_date', date)
       .order('created_at', { ascending: true })
     setDateAllSupports((data as TutorSupport[]) ?? [])
@@ -148,13 +149,13 @@ export default function TeacherTutorPage() {
     const session = getTeacherSession()
     if (!session) { router.push('/login/teacher'); return }
     setClassroomId(session.classroomId)
+    setSchoolId(session.school_id)
     loadMine(session.classroomId)
   }, [router, loadMine])
 
-  // 날짜 변경 시 해당 날짜 전체 목록 새로 로드
   useEffect(() => {
-    loadDate(selectedDate)
-  }, [selectedDate, loadDate])
+    if (schoolId) loadDate(selectedDate, schoolId)
+  }, [selectedDate, schoolId, loadDate])
 
   // 달력 점 표시용 날짜 집합 (내 신청 기준)
   const markedDates = new Set(allSupports.map((s) => s.support_date))
@@ -171,6 +172,7 @@ export default function TeacherTutorPage() {
     setError('')
     const supabase = createClient()
     const { error: err } = await supabase.from('tutor_supports').insert({
+      school_id: schoolId,
       classroom_id: classroomId,
       support_date: selectedDate,
       period: selectedPeriod,
@@ -180,7 +182,7 @@ export default function TeacherTutorPage() {
     if (err) { setError(`저장 실패: ${err.message}`); return }
     setSelectedPeriod('')
     setContent('')
-    await Promise.all([loadMine(classroomId), loadDate(selectedDate)])
+    await Promise.all([loadMine(classroomId), loadDate(selectedDate, schoolId)])
   }
 
   async function handleDelete(id: string) {
@@ -189,7 +191,7 @@ export default function TeacherTutorPage() {
     const supabase = createClient()
     await supabase.from('tutor_supports').delete().eq('id', id)
     setDeleting(null)
-    await Promise.all([loadMine(classroomId), loadDate(selectedDate)])
+    await Promise.all([loadMine(classroomId), loadDate(selectedDate, schoolId)])
   }
 
   return (

@@ -14,6 +14,7 @@ export default function TeacherLoginPage() {
   const router = useRouter()
   const [step, setStep] = useState<Step>('code')
   const [schoolCode, setSchoolCode] = useState('')
+  const [schoolId, setSchoolId] = useState('')
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [selectedId, setSelectedId] = useState('')
   const [error, setError] = useState('')
@@ -28,21 +29,21 @@ export default function TeacherLoginPage() {
       const supabase = createClient()
       const { data: config } = await supabase
         .from('school_config')
-        .select('school_code')
+        .select('id, school_code')
+        .eq('school_code', schoolCode.trim())
         .maybeSingle()
 
       if (!config) {
-        setError('학교 설정이 없습니다. 관리자에게 문의하세요.')
-        return
-      }
-      if (config.school_code !== schoolCode.trim()) {
         setError('학교코드가 올바르지 않습니다.')
         return
       }
 
+      setSchoolId(config.id)
+
       const { data: rooms } = await supabase
         .from('classrooms')
         .select('*')
+        .eq('school_id', config.id)
         .order('class_name')
 
       setClassrooms((rooms as Classroom[]) ?? [])
@@ -68,6 +69,7 @@ export default function TeacherLoginPage() {
       classroomId: classroom.id,
       className: classroom.class_name,
       teacherName: classroom.teacher_name ?? '',
+      school_id: schoolId,
     })
     router.push('/teacher/dashboard')
   }

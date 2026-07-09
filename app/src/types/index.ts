@@ -9,6 +9,7 @@ export interface SchoolConfig {
 
 export interface Classroom {
   id: string
+  school_id: string
   class_name: string
   teacher_name: string | null
   created_at: string
@@ -32,6 +33,7 @@ export interface ClassroomDevice {
 
 export interface RepairReport {
   id: string
+  school_id: string
   classroom_id: string
   device_id: string
   quantity: number
@@ -45,6 +47,7 @@ export interface RepairReport {
 
 export interface SharedDevice {
   id: string
+  school_id: string
   device_name: string
   total_quantity: number
   available_quantity: number
@@ -54,6 +57,7 @@ export interface SharedDevice {
 
 export interface Rental {
   id: string
+  school_id: string
   classroom_id: string
   device_id: string
   quantity: number
@@ -67,6 +71,7 @@ export interface Rental {
 
 export interface TutorSupport {
   id: string
+  school_id: string
   classroom_id: string
   support_date: string
   period: string
@@ -79,10 +84,12 @@ export interface TeacherSession {
   classroomId: string
   className: string
   teacherName: string
+  school_id: string
 }
 
 export interface Student {
   id: string
+  school_id: string
   name: string
   grade: string | null
   class_name: string | null
@@ -93,6 +100,7 @@ export interface Student {
 
 export interface Chromebook {
   id: string
+  school_id: string
   device_number: string
   device_year: string | null
   student_id: string | null

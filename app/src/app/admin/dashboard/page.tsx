@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { TutorSupport } from '@/types'
+import { useSchool } from '@/lib/school-context'
 
 interface Stats {
   classroomCount: number
@@ -19,6 +20,7 @@ function toLocalDateString(date: Date) {
 }
 
 export default function AdminDashboardPage() {
+  const { schoolId, loading: schoolLoading } = useSchool()
   const [stats, setStats] = useState<Stats>({
     classroomCount: 0,
     pendingRepairs: 0,
@@ -35,6 +37,7 @@ export default function AdminDashboardPage() {
   const [todaySupports, setTodaySupports] = useState<TutorSupport[]>([])
 
   useEffect(() => {
+    if (!schoolId) return
     async function load() {
       const supabase = createClient()
       const today = toLocalDateString(new Date())
@@ -46,18 +49,20 @@ export default function AdminDashboardPage() {
         { data: repairs },
         { data: supports },
       ] = await Promise.all([
-        supabase.from('classrooms').select('*', { count: 'exact', head: true }),
-        supabase.from('repair_reports').select('*', { count: 'exact', head: true }).neq('status', '처리 완료'),
-        supabase.from('rentals').select('*', { count: 'exact', head: true }).eq('status', '대여 중'),
-        supabase.from('shared_devices').select('*', { count: 'exact', head: true }).eq('is_active', true),
+        supabase.from('classrooms').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+        supabase.from('repair_reports').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).neq('status', '처리 완료'),
+        supabase.from('rentals').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('status', '대여 중'),
+        supabase.from('shared_devices').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true),
         supabase
           .from('repair_reports')
           .select('id, status, reported_at, classrooms(class_name), devices(device_type)')
+          .eq('school_id', schoolId)
           .order('reported_at', { ascending: false })
           .limit(5),
         supabase
           .from('tutor_supports')
           .select('*, classrooms(class_name)')
+          .eq('school_id', schoolId)
           .eq('support_date', today)
           .order('created_at', { ascending: true }),
       ])
@@ -71,7 +76,7 @@ export default function AdminDashboardPage() {
       setTodaySupports((supports as TutorSupport[]) ?? [])
     }
     load()
-  }, [])
+  }, [schoolId])
 
   const cards = [
     { label: '등록된 학급', value: stats.classroomCount, icon: '🏫', color: 'text-blue-700 bg-blue-50' },
@@ -79,6 +84,10 @@ export default function AdminDashboardPage() {
     { label: '현재 대여 중', value: stats.activeRentals, icon: '📦', color: 'text-emerald-700 bg-emerald-50' },
     { label: '공유 기기 종류', value: stats.sharedDeviceCount, icon: '💻', color: 'text-purple-700 bg-purple-50' },
   ]
+
+  if (schoolLoading) {
+    return <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
+  }
 
   return (
     <div>

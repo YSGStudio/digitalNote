@@ -6,19 +6,23 @@ import { RepairReport, RepairStatus } from '@/types'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatDate } from '@/lib/utils'
+import { useSchool } from '@/lib/school-context'
 
 const STATUS_ORDER: RepairStatus[] = ['접수 대기', '수리 중', '처리 완료']
 
 export default function AdminRepairsPage() {
+  const { schoolId, loading: schoolLoading } = useSchool()
   const [reports, setReports] = useState<RepairReport[]>([])
   const [filterStatus, setFilterStatus] = useState<RepairStatus | 'all'>('all')
   const [updating, setUpdating] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    if (!schoolId) return
     const supabase = createClient()
     let query = supabase
       .from('repair_reports')
       .select('*, classrooms(class_name), devices(device_type)')
+      .eq('school_id', schoolId)
       .order('reported_at', { ascending: false })
 
     if (filterStatus !== 'all') {
@@ -27,7 +31,7 @@ export default function AdminRepairsPage() {
 
     const { data } = await query
     setReports((data as RepairReport[]) ?? [])
-  }, [filterStatus])
+  }, [filterStatus, schoolId])
 
   useEffect(() => { load() }, [load])
 
@@ -45,6 +49,10 @@ export default function AdminRepairsPage() {
     setUpdating(null)
   }
 
+  if (schoolLoading) {
+    return <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
+  }
+
   return (
     <div>
       <h1 className="mb-6 text-2xl font-bold text-gray-900">고장 신고 관리</h1>
@@ -55,9 +63,7 @@ export default function AdminRepairsPage() {
             key={s}
             onClick={() => setFilterStatus(s)}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              filterStatus === s
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-100'
+              filterStatus === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
             }`}
           >
             {s === 'all' ? '전체' : s}
@@ -93,12 +99,7 @@ export default function AdminRepairsPage() {
                     <td className="px-4 py-3"><Badge label={r.status} /></td>
                     <td className="px-4 py-3">
                       {r.status !== '처리 완료' && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          loading={updating === r.id}
-                          onClick={() => nextStatus(r)}
-                        >
+                        <Button size="sm" variant="secondary" loading={updating === r.id} onClick={() => nextStatus(r)}>
                           {r.status === '접수 대기' ? '수리 중으로' : '완료 처리'}
                         </Button>
                       )}

@@ -13,6 +13,7 @@ import { formatDate } from '@/lib/utils'
 export default function TeacherRepairPage() {
   const router = useRouter()
   const [classroomId, setClassroomId] = useState('')
+  const [schoolId, setSchoolId] = useState('')
   const [reports, setReports] = useState<RepairReport[]>([])
   const [myDevices, setMyDevices] = useState<ClassroomDevice[]>([])
   const [modalOpen, setModalOpen] = useState(false)
@@ -42,6 +43,7 @@ export default function TeacherRepairPage() {
     const session = getTeacherSession()
     if (!session) { router.push('/login/teacher'); return }
     setClassroomId(session.classroomId)
+    setSchoolId(session.school_id)
     load(session.classroomId)
   }, [router, load])
 
@@ -54,6 +56,7 @@ export default function TeacherRepairPage() {
     setError('')
     const supabase = createClient()
     await supabase.from('repair_reports').insert({
+      school_id: schoolId,
       classroom_id: classroomId,
       device_id: form.device_id,
       quantity: qty,
