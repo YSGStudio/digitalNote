@@ -79,25 +79,36 @@ export default function AdminRepairsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-left text-gray-500">
-                  <th className="px-4 py-3 font-medium">신고일</th>
-                  <th className="px-4 py-3 font-medium">학급</th>
-                  <th className="px-4 py-3 font-medium">기기</th>
-                  <th className="px-4 py-3 font-medium">수량</th>
-                  <th className="px-4 py-3 font-medium">내용</th>
-                  <th className="px-4 py-3 font-medium">상태</th>
-                  <th className="px-4 py-3 font-medium">처리</th>
+                  <th className="px-3 py-3 font-medium whitespace-nowrap">신고일</th>
+                  <th className="px-3 py-3 font-medium whitespace-nowrap">학급</th>
+                  <th className="px-3 py-3 font-medium whitespace-nowrap">기기</th>
+                  <th className="px-3 py-3 font-medium whitespace-nowrap">수량</th>
+                  <th className="px-3 py-3 font-medium w-full min-w-[18rem]">내용</th>
+                  <th className="px-3 py-3 font-medium whitespace-nowrap">상태</th>
+                  <th className="px-3 py-3 font-medium whitespace-nowrap">처리</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {reports.map((r) => (
                   <tr key={r.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-gray-500">{formatDate(r.reported_at)}</td>
-                    <td className="px-4 py-3 font-medium">{r.classrooms?.class_name ?? '-'}</td>
-                    <td className="px-4 py-3">{r.devices?.device_type ?? '-'}</td>
-                    <td className="px-4 py-3">{r.quantity}대</td>
-                    <td className="px-4 py-3 text-gray-500">{r.description ?? '-'}</td>
-                    <td className="px-4 py-3"><Badge label={r.status} /></td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 text-gray-500 whitespace-nowrap">{formatDate(r.reported_at)}</td>
+                    <td className="px-3 py-3 font-medium whitespace-nowrap">{r.classrooms?.class_name ?? '-'}</td>
+                    <td className="px-3 py-3 whitespace-nowrap">{r.devices?.device_type ?? '-'}</td>
+                    <td className="px-3 py-3 whitespace-nowrap">{r.quantity}대</td>
+                    <td className="px-3 py-3 text-gray-500 w-full">
+                      {r.description ? (
+                        <div className="group relative">
+                          <span className="block truncate max-w-sm">{r.description}</span>
+                          <div className="pointer-events-none absolute bottom-full left-0 z-10 mb-1 hidden w-64 rounded-lg bg-gray-800 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                            {r.description}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap"><Badge label={r.status} /></td>
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {r.status !== '처리 완료' && (
                         <Button size="sm" variant="secondary" loading={updating === r.id} onClick={() => nextStatus(r)}>
                           {r.status === '접수 대기' ? '수리 중으로' : '완료 처리'}

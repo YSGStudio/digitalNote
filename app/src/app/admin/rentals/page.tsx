@@ -11,7 +11,7 @@ import { useSchool } from '@/lib/school-context'
 export default function AdminRentalsPage() {
   const { schoolId, loading: schoolLoading } = useSchool()
   const [rentals, setRentals] = useState<Rental[]>([])
-  const [tab, setTab] = useState<RentalStatus | 'all'>('반납 요청 중')
+  const [tab, setTab] = useState<RentalStatus | 'all'>('all')
   const [returning, setReturning] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -50,10 +50,10 @@ export default function AdminRentalsPage() {
   }
 
   const tabs: Array<{ value: RentalStatus | 'all'; label: string }> = [
+    { value: 'all', label: '전체' },
     { value: '반납 요청 중', label: '반납 요청' },
     { value: '대여 중', label: '대여 중' },
     { value: '반납 완료', label: '반납 완료' },
-    { value: 'all', label: '전체' },
   ]
 
   const returnRequestCount = tab === '반납 요청 중' ? rentals.length : 0
