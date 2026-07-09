@@ -12,11 +12,9 @@ export default function AdminLoginPage() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('login')
 
-  // 로그인 폼
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
 
-  // 회원가입 폼
   const [signupEmail, setSignupEmail] = useState('')
   const [signupPassword, setSignupPassword] = useState('')
   const [signupPasswordConfirm, setSignupPasswordConfirm] = useState('')
@@ -66,7 +64,7 @@ export default function AdminLoginPage() {
     try {
       const supabase = createClient()
 
-      // 1. 학교코드 중복 사전 확인
+      // 1. 학교코드 중복 확인
       const { data: codeCheck } = await supabase
         .from('school_config')
         .select('id')
@@ -93,35 +91,31 @@ export default function AdminLoginPage() {
         return
       }
 
-      // 이메일 인증 대기 상태면 세션이 없음
-      if (!signupData.session) {
+      if (!signupData.session || !signupData.user) {
         setError('Supabase 대시보드에서 이메일 인증(Confirm email)을 OFF로 설정해야 합니다. Authentication > Providers > Email > Confirm email 해제')
         return
       }
 
-      // 2. 학교 설정 저장 (maybeSingle: 행이 없어도 에러 없이 null 반환)
-      const { data: existing, error: fetchError } = await supabase
+      // 3. 학교 정보 저장 (각 학교마다 독립 행 생성)
+      const { data: newSchool, error: schoolError } = await supabase
         .from('school_config')
+        .insert({ school_name: schoolName.trim(), school_code: schoolCode.trim() })
         .select('id')
-        .limit(1)
-        .maybeSingle()
+        .single()
 
-      if (fetchError) {
-        setError(`학교 설정 조회 실패: ${fetchError.message}`)
+      if (schoolError || !newSchool) {
+        setError(`학교 설정 저장 실패: ${schoolError?.message ?? '알 수 없는 오류'}`)
         return
       }
 
-      if (existing) {
-        const { error: updateError } = await supabase
-          .from('school_config')
-          .update({ school_name: schoolName.trim(), school_code: schoolCode.trim() })
-          .eq('id', existing.id)
-        if (updateError) { setError(`학교 설정 저장 실패: ${updateError.message}`); return }
-      } else {
-        const { error: insertError } = await supabase
-          .from('school_config')
-          .insert({ school_name: schoolName.trim(), school_code: schoolCode.trim() })
-        if (insertError) { setError(`학교 설정 저장 실패: ${insertError.message}`); return }
+      // 4. 관리자-학교 연결 (admin_profiles)
+      const { error: profileError } = await supabase
+        .from('admin_profiles')
+        .insert({ user_id: signupData.user.id, school_id: newSchool.id })
+
+      if (profileError) {
+        setError(`관리자 프로필 저장 실패: ${profileError.message}`)
+        return
       }
 
       router.push('/admin/dashboard')
@@ -142,7 +136,6 @@ export default function AdminLoginPage() {
         </div>
 
         <div className="rounded-2xl bg-white shadow-lg">
-          {/* 탭 */}
           <div className="flex border-b">
             {(['login', 'signup'] as Tab[]).map((t) => (
               <button

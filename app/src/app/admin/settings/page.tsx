@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
+import { useSchool } from '@/lib/school-context'
 
 interface Config {
   id: string
@@ -11,6 +12,7 @@ interface Config {
 }
 
 export default function AdminSettingsPage() {
+  const { schoolId, loading: schoolLoading } = useSchool()
   const [config, setConfig] = useState<Config | null>(null)
   const [schoolName, setSchoolName] = useState('')
   const [schoolCode, setSchoolCode] = useState('')
@@ -21,13 +23,14 @@ export default function AdminSettingsPage() {
   const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
+    if (!schoolId) return
     async function load() {
       const supabase = createClient()
       const { data, error: fetchErr } = await supabase
         .from('school_config')
         .select('*')
-        .limit(1)
-        .maybeSingle()
+        .eq('id', schoolId)
+        .single()
 
       if (fetchErr) {
         setLoadError(`불러오기 실패: ${fetchErr.message}`)
@@ -40,7 +43,7 @@ export default function AdminSettingsPage() {
       }
     }
     load()
-  }, [])
+  }, [schoolId])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -51,39 +54,41 @@ export default function AdminSettingsPage() {
       setError('학교명과 학교코드를 모두 입력해주세요.')
       return
     }
+    if (!config) return
+
+    // 다른 학교가 같은 코드 사용 중인지 확인
+    const supabase = createClient()
+    const { data: codeCheck } = await supabase
+      .from('school_config')
+      .select('id')
+      .eq('school_code', schoolCode.trim())
+      .neq('id', config.id)
+      .maybeSingle()
+
+    if (codeCheck) {
+      setError('이미 다른 학교에서 사용 중인 학교코드입니다.')
+      return
+    }
 
     setSaving(true)
-    const supabase = createClient()
+    const { error: updateErr } = await supabase
+      .from('school_config')
+      .update({ school_name: schoolName.trim(), school_code: schoolCode.trim() })
+      .eq('id', config.id)
 
-    if (config) {
-      const { error: updateErr } = await supabase
-        .from('school_config')
-        .update({ school_name: schoolName.trim(), school_code: schoolCode.trim() })
-        .eq('id', config.id)
-
-      if (updateErr) {
-        setError(formatDbError(updateErr.message))
-        setSaving(false)
-        return
-      }
-    } else {
-      const { data: inserted, error: insertErr } = await supabase
-        .from('school_config')
-        .insert({ school_name: schoolName.trim(), school_code: schoolCode.trim() })
-        .select()
-        .maybeSingle()
-
-      if (insertErr) {
-        setError(formatDbError(insertErr.message))
-        setSaving(false)
-        return
-      }
-      if (inserted) setConfig(inserted as Config)
+    if (updateErr) {
+      setError(formatDbError(updateErr.message))
+      setSaving(false)
+      return
     }
 
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
+  }
+
+  if (schoolLoading) {
+    return <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
   }
 
   return (
@@ -94,7 +99,6 @@ export default function AdminSettingsPage() {
       {loadError && (
         <div className="mb-4 max-w-md rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {loadError}
-          <p className="mt-1 text-xs">Supabase SQL Editor에서 RLS 정책을 확인하세요.</p>
         </div>
       )}
 
@@ -159,15 +163,6 @@ export default function AdminSettingsPage() {
             변경 후 모든 교사에게 새 코드를 공지해주세요.
           </p>
         </div>
-
-        {error.includes('RLS') && (
-          <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <p className="text-xs font-medium text-gray-700 mb-2">Supabase SQL Editor에서 실행하세요:</p>
-            <pre className="text-xs bg-gray-900 text-green-400 rounded p-3 overflow-x-auto">{`drop policy if exists "school_config_read" on school_config;
-create policy "school_config_all" on school_config
-  for all using (true) with check (true);`}</pre>
-          </div>
-        )}
       </div>
     </div>
   )
@@ -175,7 +170,7 @@ create policy "school_config_all" on school_config
 
 function formatDbError(msg: string): string {
   if (msg.includes('row-level security') || msg.includes('RLS')) {
-    return 'RLS 정책 오류 — Supabase SQL Editor에서 school_config 정책을 수정해야 합니다.'
+    return 'RLS 정책 오류 — Supabase SQL Editor에서 school_config 정책을 확인하세요.'
   }
   if (msg.includes('unique') || msg.includes('duplicate')) {
     return '이미 동일한 학교코드가 존재합니다. 다른 코드를 사용하세요.'

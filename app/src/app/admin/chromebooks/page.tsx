@@ -6,6 +6,7 @@ import { Student, Chromebook } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { formatDate } from '@/lib/utils'
+import { useSchool } from '@/lib/school-context'
 
 type StudentWithDevice = Student & { chromebooks: Chromebook[] }
 type ChromebookWithStudent = Chromebook & { students: Student | null }
@@ -38,6 +39,7 @@ const INPUT_CLS =
   'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
 
 export default function ChromebooksPage() {
+  const { schoolId, loading: schoolLoading } = useSchool()
   const [students, setStudents] = useState<StudentWithDevice[]>([])
   const [chromebooks, setChromebooks] = useState<ChromebookWithStudent[]>([])
   const [tab, setTab] = useState<'students' | 'devices'>('students')
@@ -76,18 +78,21 @@ export default function ChromebooksPage() {
   const [deletingDevices, setDeletingDevices] = useState(false)
 
   const load = useCallback(async () => {
+    if (!schoolId) return
     setLoading(true)
     const supabase = createClient()
     const [{ data: studs }, { data: devs }] = await Promise.all([
       supabase
         .from('students')
         .select('*, chromebooks(*)')
+        .eq('school_id', schoolId)
         .order('grade', { ascending: true })
         .order('class_name', { ascending: true })
         .order('name', { ascending: true }),
       supabase
         .from('chromebooks')
         .select('*, students(*)')
+        .eq('school_id', schoolId)
         .order('device_number', { ascending: true }),
     ])
     // PostgREST treats UNIQUE FK (student_id) as 1:1, returning an object instead of array.
@@ -105,7 +110,7 @@ export default function ChromebooksPage() {
     setStudents(normalizedStuds)
     setChromebooks((devs as ChromebookWithStudent[]) ?? [])
     setLoading(false)
-  }, [])
+  }, [schoolId])
 
   useEffect(() => { load() }, [load])
 
@@ -187,14 +192,14 @@ export default function ChromebooksPage() {
   }
 
   async function confirmUpload() {
+    if (!schoolId) return
     setUploadSaving(true)
     setUploadErr('')
     const supabase = createClient()
 
     try {
     if (uploadType === 'devices') {
-      // 기존 기기 조회
-      const { data: existing, error: fetchErr } = await supabase.from('chromebooks').select('id, device_number')
+      const { data: existing, error: fetchErr } = await supabase.from('chromebooks').select('id, device_number').eq('school_id', schoolId)
       if (fetchErr) throw new Error(`기기 목록 조회 실패: ${fetchErr.message}`)
       const existingMap = new Map((existing ?? []).map((c) => [c.device_number, c.id]))
 
@@ -204,6 +209,7 @@ export default function ChromebooksPage() {
       if (toInsert.length) {
         const { error: insertErr } = await supabase.from('chromebooks').insert(
           toInsert.map((r) => ({
+            school_id: schoolId,
             device_number: r.device_number,
             device_year: r.device_year || null,
           }))
@@ -221,6 +227,7 @@ export default function ChromebooksPage() {
       const { data: existing } = await supabase
         .from('students')
         .select('id, name, grade, class_name')
+        .eq('school_id', schoolId)
       const existingMap = new Map<string, string>()
       for (const s of (existing ?? [])) {
         existingMap.set(`${s.name}|${s.grade ?? ''}|${s.class_name ?? ''}`, s.id)
@@ -245,6 +252,7 @@ export default function ChromebooksPage() {
           const { data: s } = await supabase
             .from('students')
             .insert({
+              school_id: schoolId,
               name: row.name,
               grade: row.grade || null,
               class_name: row.class_name || null,
@@ -263,6 +271,7 @@ export default function ChromebooksPage() {
             .eq('student_id', studentId)
           await supabase.from('chromebooks').upsert(
             {
+              school_id: schoolId,
               device_number: row.device_number,
               student_id: studentId,
               assigned_at: new Date().toISOString(),
@@ -321,10 +330,12 @@ export default function ChromebooksPage() {
 
   async function saveDevice() {
     if (!deviceForm.device_number.trim()) { setDeviceFormErr('기기번호를 입력해주세요.'); return }
+    if (!schoolId) return
     setDeviceFormSaving(true)
     setDeviceFormErr('')
     const supabase = createClient()
     const { error } = await supabase.from('chromebooks').insert({
+      school_id: schoolId,
       device_number: deviceForm.device_number.trim(),
       device_year: deviceForm.device_year.trim() || null,
     })
@@ -405,6 +416,7 @@ export default function ChromebooksPage() {
 
   async function saveStudent() {
     if (!studentForm.name.trim()) { setStudentFormErr('이름을 입력해주세요.'); return }
+    if (!schoolId) return
     setStudentSaving(true)
     const supabase = createClient()
     const payload = {
@@ -416,7 +428,7 @@ export default function ChromebooksPage() {
     if (editingStudent) {
       await supabase.from('students').update(payload).eq('id', editingStudent.id)
     } else {
-      await supabase.from('students').insert(payload)
+      await supabase.from('students').insert({ ...payload, school_id: schoolId })
     }
     setStudentSaving(false)
     setStudentModal(false)
@@ -466,6 +478,10 @@ export default function ChromebooksPage() {
 
   const newCount = studentUploadRows.filter((r) => r._isNew).length
   const updateCount = studentUploadRows.filter((r) => !r._isNew).length
+
+  if (schoolLoading) {
+    return <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
+  }
 
   return (
     <div>

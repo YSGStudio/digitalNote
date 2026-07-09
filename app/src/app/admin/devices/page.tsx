@@ -5,8 +5,10 @@ import { createClient } from '@/lib/supabase'
 import { SharedDevice } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { useSchool } from '@/lib/school-context'
 
 export default function AdminDevicesPage() {
+  const { schoolId, loading: schoolLoading } = useSchool()
   const [devices, setDevices] = useState<SharedDevice[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<SharedDevice | null>(null)
@@ -15,13 +17,15 @@ export default function AdminDevicesPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    if (!schoolId) return
     const supabase = createClient()
     const { data } = await supabase
       .from('shared_devices')
       .select('*')
+      .eq('school_id', schoolId)
       .order('created_at', { ascending: true })
     setDevices((data as SharedDevice[]) ?? [])
-  }, [])
+  }, [schoolId])
 
   useEffect(() => { load() }, [load])
 
@@ -40,6 +44,7 @@ export default function AdminDevicesPage() {
   async function handleSave() {
     const qty = parseInt(form.total_quantity)
     if (!form.device_name.trim() || isNaN(qty) || qty < 0) return
+    if (!schoolId) return
     setSaving(true)
     const supabase = createClient()
     if (editing) {
@@ -54,6 +59,7 @@ export default function AdminDevicesPage() {
         .eq('id', editing.id)
     } else {
       await supabase.from('shared_devices').insert({
+        school_id: schoolId,
         device_name: form.device_name,
         total_quantity: qty,
         available_quantity: qty,
@@ -69,7 +75,6 @@ export default function AdminDevicesPage() {
     if (!window.confirm(`"${d.device_name}"을(를) 삭제하면 관련 대여 이력도 함께 삭제됩니다.\n정말 삭제할까요?`)) return
     setDeleting(d.id)
     const supabase = createClient()
-    // 외래키 제약으로 인해 rentals 먼저 삭제 후 기기 삭제
     await supabase.from('rentals').delete().eq('device_id', d.id)
     await supabase.from('shared_devices').delete().eq('id', d.id)
     setDeleting(null)
@@ -80,6 +85,10 @@ export default function AdminDevicesPage() {
     const supabase = createClient()
     await supabase.from('shared_devices').update({ is_active: !d.is_active }).eq('id', d.id)
     load()
+  }
+
+  if (schoolLoading) {
+    return <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
   }
 
   return (
@@ -124,14 +133,7 @@ export default function AdminDevicesPage() {
                       <Button size="sm" variant="ghost" onClick={() => toggleActive(d)}>
                         {d.is_active ? '비활성화' : '활성화'}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        loading={deleting === d.id}
-                        onClick={() => handleDelete(d)}
-                      >
-                        삭제
-                      </Button>
+                      <Button size="sm" variant="danger" loading={deleting === d.id} onClick={() => handleDelete(d)}>삭제</Button>
                     </td>
                   </tr>
                 ))}

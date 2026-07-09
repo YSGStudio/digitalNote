@@ -6,22 +6,26 @@ import { Rental, RentalStatus } from '@/types'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatDate } from '@/lib/utils'
+import { useSchool } from '@/lib/school-context'
 
 export default function AdminRentalsPage() {
+  const { schoolId, loading: schoolLoading } = useSchool()
   const [rentals, setRentals] = useState<Rental[]>([])
   const [tab, setTab] = useState<RentalStatus | 'all'>('반납 요청 중')
   const [returning, setReturning] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    if (!schoolId) return
     const supabase = createClient()
     let query = supabase
       .from('rentals')
       .select('*, classrooms(class_name), shared_devices(device_name, available_quantity)')
+      .eq('school_id', schoolId)
       .order('rented_at', { ascending: false })
     if (tab !== 'all') query = query.eq('status', tab)
     const { data } = await query
     setRentals((data as Rental[]) ?? [])
-  }, [tab])
+  }, [tab, schoolId])
 
   useEffect(() => { load() }, [load])
 
@@ -54,15 +58,17 @@ export default function AdminRentalsPage() {
 
   const returnRequestCount = tab === '반납 요청 중' ? rentals.length : 0
 
+  if (schoolLoading) {
+    return <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">전체 대여 현황</h1>
           {tab === '반납 요청 중' && rentals.length > 0 && (
-            <p className="mt-1 text-sm text-purple-600">
-              반납 처리 대기 {returnRequestCount}건
-            </p>
+            <p className="mt-1 text-sm text-purple-600">반납 처리 대기 {returnRequestCount}건</p>
           )}
         </div>
       </div>
@@ -97,9 +103,7 @@ export default function AdminRentalsPage() {
                   <th className="px-4 py-3 font-medium">수량</th>
                   <th className="px-4 py-3 font-medium">반납일</th>
                   <th className="px-4 py-3 font-medium">상태</th>
-                  {tab === '반납 요청 중' && (
-                    <th className="px-4 py-3 font-medium">처리</th>
-                  )}
+                  {tab === '반납 요청 중' && <th className="px-4 py-3 font-medium">처리</th>}
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -116,11 +120,7 @@ export default function AdminRentalsPage() {
                     <td className="px-4 py-3"><Badge label={r.status} /></td>
                     {tab === '반납 요청 중' && (
                       <td className="px-4 py-3">
-                        <Button
-                          size="sm"
-                          loading={returning === r.id}
-                          onClick={() => handleConfirmReturn(r)}
-                        >
+                        <Button size="sm" loading={returning === r.id} onClick={() => handleConfirmReturn(r)}>
                           반납 처리
                         </Button>
                       </td>
