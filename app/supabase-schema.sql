@@ -152,6 +152,18 @@ alter table tutor_supports enable row level security;
 alter table students enable row level security;
 alter table chromebooks enable row level security;
 
+drop policy if exists "school_config_all"     on school_config;
+drop policy if exists "admin_profiles_all"    on admin_profiles;
+drop policy if exists "classrooms_all"        on classrooms;
+drop policy if exists "devices_all"           on devices;
+drop policy if exists "classroom_devices_all" on classroom_devices;
+drop policy if exists "repair_reports_all"    on repair_reports;
+drop policy if exists "shared_devices_all"    on shared_devices;
+drop policy if exists "rentals_all"           on rentals;
+drop policy if exists "tutor_supports_all"    on tutor_supports;
+drop policy if exists "students_all"          on students;
+drop policy if exists "chromebooks_all"       on chromebooks;
+
 create policy "school_config_all"      on school_config      for all using (true) with check (true);
 create policy "admin_profiles_all"     on admin_profiles      for all using (true) with check (true);
 create policy "classrooms_all"         on classrooms          for all using (true) with check (true);

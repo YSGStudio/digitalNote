@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 
-type Tab = 'login' | 'signup'
+type Tab = 'login' | 'signup' | 'reset'
 
 export default function AdminLoginPage() {
   const router = useRouter()
@@ -21,8 +21,29 @@ export default function AdminLoginPage() {
   const [schoolName, setSchoolName] = useState('')
   const [schoolCode, setSchoolCode] = useState('')
 
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetSent, setResetSent] = useState(false)
+
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  async function handleReset(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/admin/reset-password`,
+      })
+      if (error) { setError(`전송 실패: ${error.message}`); return }
+      setResetSent(true)
+    } catch {
+      setError('오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -140,7 +161,7 @@ export default function AdminLoginPage() {
             {(['login', 'signup'] as Tab[]).map((t) => (
               <button
                 key={t}
-                onClick={() => { setTab(t); setError('') }}
+                onClick={() => { setTab(t); setError(''); setResetSent(false) }}
                 className={`flex-1 py-3 text-sm font-medium transition-colors ${
                   tab === t
                     ? 'border-b-2 border-blue-600 text-blue-600'
@@ -153,7 +174,47 @@ export default function AdminLoginPage() {
           </div>
 
           <div className="p-6">
-            {tab === 'login' ? (
+            {tab === 'reset' ? (
+              <div>
+                {resetSent ? (
+                  <div className="py-4 text-center">
+                    <div className="mb-3 text-3xl">📧</div>
+                    <p className="text-sm font-medium text-gray-900">재설정 링크를 전송했습니다.</p>
+                    <p className="mt-1 text-xs text-gray-500">{resetEmail} 받은편지함을 확인하세요.</p>
+                    <button
+                      onClick={() => { setTab('login'); setResetSent(false); setResetEmail('') }}
+                      className="mt-4 text-sm text-blue-600 hover:underline"
+                    >
+                      로그인으로 돌아가기
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleReset} className="space-y-4">
+                    <p className="text-sm text-gray-500">가입한 이메일을 입력하면 비밀번호 재설정 링크를 보내드립니다.</p>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700">이메일</label>
+                      <input
+                        type="email"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="admin@school.kr"
+                        required
+                      />
+                    </div>
+                    {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+                    <Button type="submit" loading={loading} className="w-full">재설정 링크 전송</Button>
+                    <button
+                      type="button"
+                      onClick={() => { setTab('login'); setError('') }}
+                      className="w-full text-center text-sm text-gray-400 hover:text-gray-600"
+                    >
+                      로그인으로 돌아가기
+                    </button>
+                  </form>
+                )}
+              </div>
+            ) : tab === 'login' ? (
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">이메일</label>
@@ -179,6 +240,13 @@ export default function AdminLoginPage() {
                 </div>
                 {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
                 <Button type="submit" loading={loading} className="w-full">로그인</Button>
+                <button
+                  type="button"
+                  onClick={() => { setTab('reset'); setError('') }}
+                  className="w-full text-center text-sm text-gray-400 hover:text-gray-600"
+                >
+                  비밀번호를 잊으셨나요?
+                </button>
               </form>
             ) : (
               <form onSubmit={handleSignup} className="space-y-4">

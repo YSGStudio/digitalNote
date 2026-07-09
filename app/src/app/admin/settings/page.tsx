@@ -22,6 +22,13 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
 
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwSaved, setPwSaved] = useState(false)
+  const [pwError, setPwError] = useState('')
+
   useEffect(() => {
     if (!schoolId) return
     async function load() {
@@ -85,6 +92,35 @@ export default function AdminSettingsPage() {
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
+  }
+
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault()
+    setPwError('')
+    setPwSaved(false)
+    if (pwNew.length < 6) { setPwError('새 비밀번호는 6자 이상이어야 합니다.'); return }
+    if (pwNew !== pwConfirm) { setPwError('새 비밀번호가 일치하지 않습니다.'); return }
+
+    setPwSaving(true)
+    const supabase = createClient()
+
+    // 현재 비밀번호 확인 (재로그인 시도)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user?.email) { setPwError('사용자 정보를 불러올 수 없습니다.'); setPwSaving(false); return }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: pwCurrent,
+    })
+    if (signInError) { setPwError('현재 비밀번호가 올바르지 않습니다.'); setPwSaving(false); return }
+
+    const { error: updateError } = await supabase.auth.updateUser({ password: pwNew })
+    setPwSaving(false)
+    if (updateError) { setPwError(`변경 실패: ${updateError.message}`); return }
+
+    setPwSaved(true)
+    setPwCurrent(''); setPwNew(''); setPwConfirm('')
+    setTimeout(() => setPwSaved(false), 3000)
   }
 
   if (schoolLoading) {
@@ -162,6 +198,54 @@ export default function AdminSettingsPage() {
             학교코드는 교사 전체가 공유합니다. 변경하면 기존 코드로는 로그인할 수 없으므로
             변경 후 모든 교사에게 새 코드를 공지해주세요.
           </p>
+        </div>
+
+        {/* 비밀번호 변경 */}
+        <div className="mt-8">
+          <h2 className="mb-1 text-lg font-semibold text-gray-900">비밀번호 변경</h2>
+          <p className="mb-4 text-sm text-gray-500">현재 비밀번호를 확인한 후 새 비밀번호로 변경합니다.</p>
+          <form onSubmit={handlePasswordChange} className="space-y-4 rounded-xl bg-white p-6 shadow-sm">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">현재 비밀번호</label>
+              <input
+                type="password"
+                value={pwCurrent}
+                onChange={(e) => setPwCurrent(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="현재 비밀번호 입력"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">새 비밀번호</label>
+              <input
+                type="password"
+                value={pwNew}
+                onChange={(e) => setPwNew(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="6자 이상"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">새 비밀번호 확인</label>
+              <input
+                type="password"
+                value={pwConfirm}
+                onChange={(e) => setPwConfirm(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="동일한 비밀번호 입력"
+                required
+              />
+            </div>
+            {pwError && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{pwError}</p>
+            )}
+            {pwSaved && (
+              <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">✓ 비밀번호가 변경되었습니다.</p>
+            )}
+            <Button type="submit" loading={pwSaving}>비밀번호 변경</Button>
+          </form>
         </div>
       </div>
     </div>
