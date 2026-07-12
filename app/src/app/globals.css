@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f7fb;
+  --foreground: #111827;
+  --surface: #ffffff;
+  --surface-soft: #f8fafc;
+  --line: #e5e7eb;
+  --muted: #64748b;
+  --brand: #3f5f95;
+  --brand-strong: #2f4777;
+  --teacher: #17856d;
+  --teacher-strong: #116b58;
+  --danger: #c2414b;
 }
 
 @theme inline {
@@ -12,15 +21,109 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  text-rendering: geometricPrecision;
+}
+
+::selection {
+  background: #c7d2fe;
+  color: #172554;
+}
+
+main {
+  background:
+    radial-gradient(circle at top left, rgba(63, 95, 149, 0.08), transparent 28rem),
+    linear-gradient(180deg, #f7f8fb 0%, #eef2f7 100%);
+}
+
+aside {
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 1px 0 0 rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(14px);
+}
+
+h1 {
+  letter-spacing: 0;
+}
+
+input,
+select,
+textarea {
+  background-color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.03);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--brand) !important;
+  box-shadow: 0 0 0 3px rgba(63, 95, 149, 0.14);
+}
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+table.w-full {
+  padding: 0.5rem;
+}
+
+thead tr {
+  background: #eef2f7;
+}
+
+tbody tr {
+  background: #ffffff;
+  transition: background-color 140ms ease;
+}
+
+tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+tbody tr:hover {
+  background: #eef6ff !important;
+}
+
+.overflow-x-auto {
+  background: #f1f5f9;
+}
+
+.rounded-xl.bg-white.shadow-sm:has(table),
+.rounded-xl.bg-white:has(table) {
+  background: #f1f5f9;
+}
+
+.rounded-xl.bg-white.shadow-sm:has(> .overflow-x-auto),
+.rounded-xl.bg-white:has(> .overflow-x-auto) {
+  overflow: hidden;
+}
+
+.bg-white.shadow-sm,
+.bg-white.shadow-lg,
+.rounded-xl.bg-white {
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.055);
+}
+
+.rounded-2xl.bg-white {
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+}
+
+.bg-gray-50 {
+  background-color: #f8fafc;
+}
+
+.text-gray-500 {
+  color: var(--muted);
 }

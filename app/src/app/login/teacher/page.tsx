@@ -75,18 +75,18 @@ export default function TeacherLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-100 p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[radial-gradient(circle_at_top_left,_#ccfbf1,_transparent_28rem),linear-gradient(135deg,_#f8fafc,_#eef2f7)] p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mb-3 text-4xl">🏫</div>
-          <h1 className="text-xl font-bold text-gray-900">교사 로그인</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-3xl shadow-lg shadow-slate-900/10">🏫</div>
+          <h1 className="text-xl font-bold text-slate-950">교사 로그인</h1>
+          <p className="mt-1 text-sm text-slate-500">
             {step === 'code' ? '학교코드를 입력하세요' : '학급을 선택하세요'}
           </p>
         </div>
 
         {step === 'code' ? (
-          <div className="rounded-2xl bg-white p-8 shadow-lg">
+          <div className="rounded-2xl bg-white/95 p-8 shadow-xl shadow-slate-900/10">
             <form onSubmit={handleCodeSubmit} className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">학교코드</label>
@@ -104,14 +104,14 @@ export default function TeacherLoginPage() {
               <Button
                 type="submit"
                 loading={loading}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
+                className="w-full bg-[#17856d] hover:bg-[#116b58] focus:ring-emerald-500"
               >
                 확인
               </Button>
             </form>
           </div>
         ) : (
-          <div className="rounded-2xl bg-white p-6 shadow-lg">
+          <div className="rounded-2xl bg-white/95 p-6 shadow-xl shadow-slate-900/10">
             <button
               onClick={handleBack}
               className="mb-4 flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600"
@@ -133,10 +133,10 @@ export default function TeacherLoginPage() {
                     <button
                       key={c.id}
                       onClick={() => setSelectedId(c.id)}
-                      className={`w-full rounded-lg border-2 px-4 py-3 text-left transition-all ${
+                      className={`w-full rounded-lg border px-4 py-3 text-left transition-all ${
                         selectedId === c.id
-                          ? 'border-emerald-500 bg-emerald-50 shadow-sm'
-                          : 'border-gray-200 hover:border-emerald-300 hover:bg-gray-50'
+                          ? 'border-[#17856d] bg-emerald-50 shadow-sm'
+                          : 'border-slate-200 hover:border-emerald-300 hover:bg-slate-50'
                       }`}
                     >
                       <p className="font-medium text-gray-900">{c.class_name}</p>
@@ -156,7 +156,7 @@ export default function TeacherLoginPage() {
                 onClick={handleEnter}
                 loading={entering}
                 disabled={!selectedId}
-                className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500 disabled:bg-emerald-200"
+                className="mt-4 w-full bg-[#17856d] hover:bg-[#116b58] focus:ring-emerald-500 disabled:bg-emerald-200"
               >
                 입장하기
               </Button>

@@ -56,13 +56,15 @@ export default function TeacherDashboardPage() {
       </div>
 
       <div className="mb-8 grid grid-cols-2 gap-4">
-        <div className="rounded-xl bg-white p-5 shadow-sm">
-          <p className="text-2xl font-bold text-gray-900">{deviceCount}</p>
-          <p className="mt-0.5 text-sm text-gray-500">기기 종류 등록됨</p>
+        <div className="rounded-xl border border-teal-200 bg-teal-50/80 p-5 shadow-sm">
+          <div className="mb-3 inline-flex rounded-lg bg-white/75 p-2.5 text-teal-700">💻</div>
+          <p className="text-2xl font-bold text-slate-950">{deviceCount}</p>
+          <p className="mt-0.5 text-sm text-teal-800/75">기기 종류 등록됨</p>
         </div>
-        <div className="rounded-xl bg-white p-5 shadow-sm">
-          <p className="text-2xl font-bold text-orange-600">{activeRentals}</p>
-          <p className="mt-0.5 text-sm text-gray-500">현재 대여 중</p>
+        <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-5 shadow-sm">
+          <div className="mb-3 inline-flex rounded-lg bg-white/75 p-2.5 text-amber-700">📦</div>
+          <p className="text-2xl font-bold text-slate-950">{activeRentals}</p>
+          <p className="mt-0.5 text-sm text-amber-800/75">현재 대여 중</p>
         </div>
       </div>
 
@@ -71,7 +73,7 @@ export default function TeacherDashboardPage() {
           <Link
             key={l.href}
             href={l.href}
-            className="rounded-xl bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+            className="rounded-xl border border-slate-200 bg-white/90 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-50/70 hover:shadow-md"
           >
             <span className="text-3xl">{l.icon}</span>
             <p className="mt-3 font-semibold text-gray-900">{l.label}</p>

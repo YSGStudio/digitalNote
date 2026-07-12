@@ -79,10 +79,10 @@ export default function AdminDashboardPage() {
   }, [schoolId])
 
   const cards = [
-    { label: '등록된 학급', value: stats.classroomCount, icon: '🏫', color: 'text-blue-700 bg-blue-50' },
-    { label: '처리 중인 고장', value: stats.pendingRepairs, icon: '🔧', color: 'text-orange-700 bg-orange-50' },
-    { label: '현재 대여 중', value: stats.activeRentals, icon: '📦', color: 'text-emerald-700 bg-emerald-50' },
-    { label: '공유 기기 종류', value: stats.sharedDeviceCount, icon: '💻', color: 'text-purple-700 bg-purple-50' },
+    { label: '등록된 학급', value: stats.classroomCount, icon: '🏫', color: 'text-blue-700 bg-white/70', card: 'border-blue-200 bg-blue-50/80' },
+    { label: '처리 중인 고장', value: stats.pendingRepairs, icon: '🔧', color: 'text-orange-700 bg-white/70', card: 'border-orange-200 bg-orange-50/80' },
+    { label: '현재 대여 중', value: stats.activeRentals, icon: '📦', color: 'text-emerald-700 bg-white/70', card: 'border-emerald-200 bg-emerald-50/80' },
+    { label: '공유 기기 종류', value: stats.sharedDeviceCount, icon: '💻', color: 'text-violet-700 bg-white/70', card: 'border-violet-200 bg-violet-50/80' },
   ]
 
   if (schoolLoading) {
@@ -95,7 +95,7 @@ export default function AdminDashboardPage() {
 
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         {cards.map((card) => (
-          <div key={card.label} className="rounded-xl bg-white p-5 shadow-sm">
+          <div key={card.label} className={`rounded-xl border p-5 shadow-sm ${card.card}`}>
             <div className={`mb-3 inline-flex rounded-lg p-2.5 ${card.color}`}>
               <span className="text-xl">{card.icon}</span>
             </div>

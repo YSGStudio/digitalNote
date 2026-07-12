@@ -148,24 +148,24 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[radial-gradient(circle_at_top_left,_#dbeafe,_transparent_28rem),linear-gradient(135deg,_#f8fafc,_#eef2f7)] p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mb-3 text-4xl">🔑</div>
-          <h1 className="text-xl font-bold text-gray-900">관리자</h1>
-          <p className="mt-1 text-sm text-gray-500">디지털정보부장 전용</p>
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-3xl shadow-lg shadow-slate-900/10">🔑</div>
+          <h1 className="text-xl font-bold text-slate-950">관리자</h1>
+          <p className="mt-1 text-sm text-slate-500">디지털정보부장 전용</p>
         </div>
 
-        <div className="rounded-2xl bg-white shadow-lg">
-          <div className="flex border-b">
+        <div className="overflow-hidden rounded-2xl bg-white/95 shadow-xl shadow-slate-900/10">
+          <div className="flex border-b border-slate-100 bg-slate-50/60">
             {(['login', 'signup'] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => { setTab(t); setError(''); setResetSent(false) }}
                 className={`flex-1 py-3 text-sm font-medium transition-colors ${
                   tab === t
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'border-b-2 border-[#3f5f95] bg-white text-[#2f4777]'
+                    : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
                 {t === 'login' ? '로그인' : '회원가입'}
