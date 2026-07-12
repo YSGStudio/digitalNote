@@ -25,6 +25,15 @@ type DeviceUploadRow = {
   device_year: string
 }
 
+type PromoUploadRow = {
+  name: string
+  grade: string
+  class_name: string
+  student_number: string
+  _status: 'matched' | 'new' | 'ambiguous'
+  _studentId?: string
+}
+
 function findCol(row: Record<string, unknown>, candidates: string[]): string {
   const keys = Object.keys(row)
   for (const c of candidates) {
@@ -54,6 +63,15 @@ export default function ChromebooksPage() {
   const [uploadErr, setUploadErr] = useState('')
   const studentFileRef = useRef<HTMLInputElement>(null)
   const deviceFileRef = useRef<HTMLInputElement>(null)
+
+  // Promotion (진급)
+  const [promoModal, setPromoModal] = useState(false)
+  const [promoBusy, setPromoBusy] = useState<'graduate' | 'promote' | null>(null)
+  const [promoMsg, setPromoMsg] = useState('')
+  const [promoErr, setPromoErr] = useState('')
+  const [promoRows, setPromoRows] = useState<PromoUploadRow[]>([])
+  const [promoSaving, setPromoSaving] = useState(false)
+  const promoFileRef = useRef<HTMLInputElement>(null)
 
   // Assign device
   const [assignTarget, setAssignTarget] = useState<StudentWithDevice | null>(null)
@@ -328,6 +346,149 @@ export default function ChromebooksPage() {
     load()
   }
 
+  const sixthGraders = students.filter((s) => s.grade === '6')
+
+  async function handleGraduate() {
+    if (!schoolId || !sixthGraders.length) return
+    if (!confirm(`6학년 ${sixthGraders.length}명을 졸업 처리(삭제)하시겠습니까?\n배정된 크롬북은 자동으로 미배정 상태가 되어 재배정할 수 있습니다.`))
+      return
+    setPromoBusy('graduate')
+    setPromoErr('')
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('students')
+      .delete()
+      .eq('school_id', schoolId)
+      .eq('grade', '6')
+    setPromoBusy(null)
+    if (error) { setPromoErr(`졸업 처리 실패: ${error.message}`); return }
+    setPromoMsg(`졸업생 ${sixthGraders.length}명을 삭제했습니다.`)
+    load()
+  }
+
+  async function handlePromote() {
+    if (!schoolId) return
+    if (sixthGraders.length > 0) {
+      if (!confirm(`아직 6학년 ${sixthGraders.length}명이 남아 있습니다.\n먼저 1단계 졸업 처리를 하는 것을 권장합니다.\n\n그래도 진급을 실행할까요? (6학년은 그대로 유지됩니다)`))
+        return
+    } else if (!confirm('전체 학생의 학년을 +1 올리고, 반·번호를 초기화합니다.\n크롬북 배정은 그대로 유지됩니다. 실행할까요?')) {
+      return
+    }
+    setPromoBusy('promote')
+    setPromoErr('')
+    const supabase = createClient()
+    // 5학년부터 내림차순으로 처리해야 이미 올린 학년이 다시 올라가지 않음
+    for (const g of [5, 4, 3, 2, 1]) {
+      const { error } = await supabase
+        .from('students')
+        .update({ grade: String(g + 1), class_name: null, student_number: null })
+        .eq('school_id', schoolId)
+        .eq('grade', String(g))
+      if (error) {
+        setPromoErr(`진급 처리 실패 (${g}학년): ${error.message}`)
+        setPromoBusy(null)
+        return
+      }
+    }
+    setPromoBusy(null)
+    setPromoMsg('진급 완료 — 전체 학년 +1, 반·번호 초기화됨. 이제 3단계에서 새 반편성 명단을 업로드하세요.')
+    load()
+  }
+
+  async function handlePromoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setPromoErr('')
+    try {
+      const rows = await parseExcelFile(file)
+      if (!rows.length) { setPromoErr('파일에 데이터가 없습니다.'); return }
+
+      const parsed = rows
+        .map((r) => ({
+          name: findCol(r, ['이름', '성명', '학생명', 'name']),
+          grade: findCol(r, ['학년', 'grade']),
+          class_name: findCol(r, ['반', '학급', 'class']),
+          student_number: findCol(r, ['번호', '출석번호', '학번', 'number', 'no']),
+        }))
+        .filter((r) => r.name)
+
+      if (!parsed.length) {
+        setPromoErr('"이름" 열을 찾을 수 없습니다. 열 제목을 확인해주세요.')
+        return
+      }
+
+      // 이름+학년 우선 매칭, 실패 시 이름 단독 매칭 (이름이 유일할 때만)
+      const byNameGrade = new Map<string, StudentWithDevice[]>()
+      const byName = new Map<string, StudentWithDevice[]>()
+      for (const s of students) {
+        const kg = `${s.name}|${s.grade ?? ''}`
+        byNameGrade.set(kg, [...(byNameGrade.get(kg) ?? []), s])
+        byName.set(s.name, [...(byName.get(s.name) ?? []), s])
+      }
+
+      setPromoRows(
+        parsed.map((r) => {
+          const gradeMatches = byNameGrade.get(`${r.name}|${r.grade}`) ?? []
+          if (gradeMatches.length === 1)
+            return { ...r, _status: 'matched' as const, _studentId: gradeMatches[0].id }
+          if (gradeMatches.length > 1) return { ...r, _status: 'ambiguous' as const }
+          const nameMatches = byName.get(r.name) ?? []
+          if (nameMatches.length === 1)
+            return { ...r, _status: 'matched' as const, _studentId: nameMatches[0].id }
+          if (nameMatches.length > 1) return { ...r, _status: 'ambiguous' as const }
+          return { ...r, _status: 'new' as const }
+        })
+      )
+    } catch {
+      setPromoErr('파일을 읽을 수 없습니다. .xlsx 또는 .csv 파일을 사용해주세요.')
+    }
+  }
+
+  async function confirmPromoUpload() {
+    if (!schoolId) return
+    setPromoSaving(true)
+    setPromoErr('')
+    const supabase = createClient()
+    try {
+      for (const row of promoRows) {
+        if (row._status === 'ambiguous') continue
+        if (row._status === 'matched' && row._studentId) {
+          const { error } = await supabase
+            .from('students')
+            .update({
+              grade: row.grade || null,
+              class_name: row.class_name || null,
+              student_number: row.student_number || null,
+            })
+            .eq('id', row._studentId)
+          if (error) throw new Error(`${row.name} 업데이트 실패: ${error.message}`)
+        } else if (row._status === 'new') {
+          const { error } = await supabase.from('students').insert({
+            school_id: schoolId,
+            name: row.name,
+            grade: row.grade || null,
+            class_name: row.class_name || null,
+            student_number: row.student_number || null,
+          })
+          if (error) throw new Error(`${row.name} 추가 실패: ${error.message}`)
+        }
+      }
+      const ambiguousCount = promoRows.filter((r) => r._status === 'ambiguous').length
+      setPromoMsg(
+        ambiguousCount > 0
+          ? `반편성 적용 완료. 동명이인 ${ambiguousCount}명은 자동 처리되지 않았으니 학생 현황에서 직접 수정해주세요.`
+          : '새 반편성 적용 완료.'
+      )
+      setPromoRows([])
+      load()
+    } catch (err) {
+      setPromoErr(err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.')
+    } finally {
+      setPromoSaving(false)
+    }
+  }
+
   async function saveDevice() {
     if (!deviceForm.device_number.trim()) { setDeviceFormErr('기기번호를 입력해주세요.'); return }
     if (!schoolId) return
@@ -497,6 +658,11 @@ export default function ChromebooksPage() {
         <div className="flex gap-2">
           <input ref={studentFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleStudentFile} />
           <input ref={deviceFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleDeviceFile} />
+          <input ref={promoFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handlePromoFile} />
+          {/* TODO: 새 학년도 시작 시 활성화 */}
+          <Button variant="secondary" disabled title="새 학년도에 활성화 예정">
+            진급 처리
+          </Button>
           <Button variant="secondary" loading={exporting} onClick={handleExport}>
             내보내기
           </Button>
@@ -956,6 +1122,156 @@ export default function ChromebooksPage() {
             <Button variant="secondary" onClick={() => setStudentModal(false)}>취소</Button>
             <Button loading={studentSaving} onClick={saveStudent}>저장</Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Promotion Modal */}
+      <Modal
+        open={promoModal}
+        onClose={() => { setPromoModal(false); setPromoRows([]) }}
+        title="진급 처리 (새 학년도)"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            크롬북 배정은 그대로 유지되고 학생의 학년·반·번호만 변경됩니다. 순서대로 진행해주세요.
+          </p>
+
+          {promoMsg && (
+            <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">✓ {promoMsg}</p>
+          )}
+          {promoErr && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{promoErr}</p>
+          )}
+
+          {promoRows.length === 0 ? (
+            <div className="space-y-3">
+              {/* 1단계 */}
+              <div className="rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">1단계 — 졸업생 처리</p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      6학년 {sixthGraders.length}명 삭제 · 배정 기기는 자동으로 미배정 전환
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={promoBusy === 'graduate'}
+                    onClick={handleGraduate}
+                    disabled={sixthGraders.length === 0}
+                  >
+                    {sixthGraders.length === 0 ? '완료됨' : '졸업 처리'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* 2단계 */}
+              <div className="rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">2단계 — 학년 올리기</p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      전체 학년 +1 · 반/번호 초기화 (기기 배정 유지)
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={promoBusy === 'promote'}
+                    onClick={handlePromote}
+                  >
+                    진급 실행
+                  </Button>
+                </div>
+              </div>
+
+              {/* 3단계 */}
+              <div className="rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">3단계 — 새 반편성 업로드</p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      엑셀 열 제목: <code className="rounded bg-gray-100 px-1">이름</code>{' '}
+                      <code className="rounded bg-gray-100 px-1">학년</code>{' '}
+                      <code className="rounded bg-gray-100 px-1">반</code>{' '}
+                      <code className="rounded bg-gray-100 px-1">번호</code> · 이름으로 기존 학생과 매칭
+                    </p>
+                  </div>
+                  <Button size="sm" onClick={() => promoFileRef.current?.click()}>
+                    파일 선택
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* 3단계 업로드 미리보기 */
+            <div className="space-y-3">
+              <p className="text-sm text-gray-700">
+                총 <strong>{promoRows.length}명</strong> —{' '}
+                <span className="text-green-600">매칭 {promoRows.filter((r) => r._status === 'matched').length}명</span>
+                <span className="ml-1 text-blue-600">/ 신규(전입) {promoRows.filter((r) => r._status === 'new').length}명</span>
+                {promoRows.some((r) => r._status === 'ambiguous') && (
+                  <span className="ml-1 text-red-600">
+                    / 동명이인 {promoRows.filter((r) => r._status === 'ambiguous').length}명 (수동 처리 필요)
+                  </span>
+                )}
+              </p>
+
+              <div className="max-h-64 overflow-y-auto rounded-lg border">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">구분</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">이름</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">학년</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">반</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">번호</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {promoRows.slice(0, 100).map((row, i) => (
+                      <tr key={i} className={row._status === 'ambiguous' ? 'bg-red-50/60' : row._status === 'new' ? 'bg-blue-50/40' : ''}>
+                        <td className="px-3 py-1.5">
+                          {row._status === 'matched' && (
+                            <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-green-700">매칭</span>
+                          )}
+                          {row._status === 'new' && (
+                            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-blue-700">신규</span>
+                          )}
+                          {row._status === 'ambiguous' && (
+                            <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-red-700">동명이인</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 font-medium">{row.name}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{row.grade || '-'}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{row.class_name || '-'}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{row.student_number || '-'}</td>
+                      </tr>
+                    ))}
+                    {promoRows.length > 100 && (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-2 text-center text-gray-400">
+                          ... 외 {promoRows.length - 100}명
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {promoRows.some((r) => r._status === 'ambiguous') && (
+                <p className="rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-700">
+                  동명이인은 기기 배정이 엉킬 수 있어 자동 처리하지 않습니다. 적용 후 학생 현황에서 직접 수정해주세요.
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="secondary" onClick={() => setPromoRows([])}>뒤로</Button>
+                <Button loading={promoSaving} onClick={confirmPromoUpload}>반편성 적용</Button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
 
