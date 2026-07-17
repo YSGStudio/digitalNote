@@ -579,6 +579,7 @@ export default function ChromebooksPage() {
     if (!studentForm.name.trim()) { setStudentFormErr('이름을 입력해주세요.'); return }
     if (!schoolId) return
     setStudentSaving(true)
+    setStudentFormErr('')
     const supabase = createClient()
     const payload = {
       name: studentForm.name.trim(),
@@ -586,10 +587,14 @@ export default function ChromebooksPage() {
       class_name: studentForm.class_name.trim() || null,
       student_number: studentForm.student_number.trim() || null,
     }
-    if (editingStudent) {
-      await supabase.from('students').update(payload).eq('id', editingStudent.id)
-    } else {
-      await supabase.from('students').insert({ ...payload, school_id: schoolId })
+    const { error } = editingStudent
+      ? await supabase.from('students').update(payload).eq('id', editingStudent.id)
+      : await supabase.from('students').insert({ ...payload, school_id: schoolId })
+
+    if (error) {
+      setStudentFormErr(`저장 실패: ${error.message}`)
+      setStudentSaving(false)
+      return
     }
     setStudentSaving(false)
     setStudentModal(false)
