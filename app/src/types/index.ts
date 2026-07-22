@@ -1,5 +1,6 @@
 export type RepairStatus = '접수 대기' | '수리 중' | '처리 완료'
 export type RentalStatus = '대여 중' | '반납 요청 중' | '반납 완료'
+export type TeacherLoanStatus = '대여중' | '반납완료'
 
 export interface SchoolConfig {
   id: string
@@ -107,4 +108,34 @@ export interface Chromebook {
   assigned_at: string | null
   created_at: string
   students?: Student
+}
+
+export interface TeacherDeviceLoan {
+  id: string
+  school_id: string
+  status: TeacherLoanStatus
+
+  borrower_name: string
+  device_type: string | null
+  device_etc: string | null
+  model: string | null
+  asset_no: string | null
+  parts: string[] | null
+  parts_etc: string | null
+  note: string | null
+  rent_date: string
+  sig_borrower: string
+  sig_manager_out: string
+  manager_out_name: string
+
+  return_date: string | null
+  condition: string | null
+  condition_etc: string | null
+  return_note: string | null
+  sig_returner: string | null
+  sig_manager_in: string | null
+  manager_in_name: string | null
+
+  created_at: string
+  updated_at: string
 }

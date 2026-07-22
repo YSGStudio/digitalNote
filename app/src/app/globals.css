@@ -127,3 +127,13 @@ tbody tr:hover {
 .text-gray-500 {
   color: var(--muted);
 }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  body {
+    background: white !important;
+  }
+}

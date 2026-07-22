@@ -136,6 +136,40 @@ create table if not exists tutor_supports (
   created_at timestamptz default now()
 );
 
+-- 12. 교사기기대여 (교사 개인 기기 대여증·반납증)
+create table if not exists teacher_device_loans (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references school_config(id) on delete cascade,
+  status text not null default '대여중'
+    check (status in ('대여중', '반납완료')),
+
+  -- 대여
+  borrower_name text not null,
+  device_type text,
+  device_etc text,
+  model text,
+  asset_no text,
+  parts text[],
+  parts_etc text,
+  note text,
+  rent_date date not null default current_date,
+  sig_borrower text not null,
+  sig_manager_out text not null,
+  manager_out_name text,
+
+  -- 반납
+  return_date date,
+  condition text,
+  condition_etc text,
+  return_note text,
+  sig_returner text,
+  sig_manager_in text,
+  manager_in_name text,
+
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
 -- ============================================================
 -- RLS (Row Level Security) 설정
 -- ============================================================
@@ -151,6 +185,7 @@ alter table rentals enable row level security;
 alter table tutor_supports enable row level security;
 alter table students enable row level security;
 alter table chromebooks enable row level security;
+alter table teacher_device_loans enable row level security;
 
 drop policy if exists "school_config_all"     on school_config;
 drop policy if exists "admin_profiles_all"    on admin_profiles;
@@ -163,6 +198,7 @@ drop policy if exists "rentals_all"           on rentals;
 drop policy if exists "tutor_supports_all"    on tutor_supports;
 drop policy if exists "students_all"          on students;
 drop policy if exists "chromebooks_all"       on chromebooks;
+drop policy if exists "teacher_device_loans_all" on teacher_device_loans;
 
 create policy "school_config_all"      on school_config      for all using (true) with check (true);
 create policy "admin_profiles_all"     on admin_profiles      for all using (true) with check (true);
@@ -175,6 +211,7 @@ create policy "rentals_all"            on rentals             for all using (tru
 create policy "tutor_supports_all"     on tutor_supports      for all using (true) with check (true);
 create policy "students_all"           on students            for all using (true) with check (true);
 create policy "chromebooks_all"        on chromebooks         for all using (true) with check (true);
+create policy "teacher_device_loans_all" on teacher_device_loans for all using (true) with check (true);
 
 -- ============================================================
 -- [기존 DB 마이그레이션] 이미 스키마를 실행한 경우 아래 SQL만 실행하세요

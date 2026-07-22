@@ -29,9 +29,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <AdminSchoolProvider>
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-screen overflow-hidden print:h-auto print:overflow-visible">
         <AdminSidebar />
-        <main className="flex-1 overflow-y-auto bg-gray-50 p-6 lg:p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto bg-gray-50 p-6 lg:p-8 print:overflow-visible print:bg-white print:p-0">
+          {children}
+        </main>
       </div>
     </AdminSchoolProvider>
   )
