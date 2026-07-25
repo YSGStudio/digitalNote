@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: '디지털기기 관리 플랫폼',
+  title: '스쿨디바이스',
   description: '학교 디지털기기 관리 시스템',
 }
 

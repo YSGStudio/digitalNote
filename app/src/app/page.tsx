@@ -6,7 +6,7 @@ export default function Home() {
       <div className="w-full max-w-md">
         <div className="mb-10 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-4xl shadow-lg shadow-slate-900/10">💻</div>
-          <h1 className="text-2xl font-bold text-slate-950">디지털기기 관리 플랫폼</h1>
+          <h1 className="text-2xl font-bold text-slate-950">스쿨디바이스</h1>
           <p className="mt-2 text-sm text-slate-500">학교 디지털기기 통합 관리 시스템</p>
         </div>
 

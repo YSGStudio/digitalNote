@@ -32,7 +32,7 @@ export function AdminSidebar() {
     <aside className="flex h-screen w-60 flex-col border-r border-slate-200/80 bg-white print:hidden">
       <div className="border-b border-slate-100 px-5 py-5">
         <p className="text-xs font-semibold text-[#3f5f95]">관리자</p>
-        <p className="mt-1 text-sm font-bold text-slate-950">디지털기기 관리 플랫폼</p>
+        <p className="mt-1 text-sm font-bold text-slate-950">스쿨디바이스</p>
       </div>
 
       <nav className="flex-1 space-y-1.5 p-3">
