@@ -110,6 +110,29 @@ export interface Chromebook {
   students?: Student
 }
 
+export type TabActivityStatus = '미사용' | '초기설정만' | '저조' | '활발'
+
+export interface SchoolOverview {
+  school_id: string
+  school_name: string
+  school_code: string
+  joined_at: string
+  classroom_count: number
+  chromebook_count: number
+  shared_device_count: number
+  last_activity: string | null
+  stale_repair_count: number
+}
+
+export interface SchoolTabActivity {
+  school_id: string
+  tab: string
+  total_count: number
+  recent_count: number
+  last_activity: string | null
+  status: TabActivityStatus
+}
+
 export interface TeacherDeviceLoan {
   id: string
   school_id: string

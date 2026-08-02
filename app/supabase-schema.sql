@@ -19,11 +19,11 @@ create table if not exists school_config (
   created_at timestamptz default now()
 );
 
--- 2. 관리자-학교 연결 (admin_profiles)
+-- 2. 관리자-학교 연결 (admin_profiles) — 학교당 관리자 1명 강제
 create table if not exists admin_profiles (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique references auth.users(id) on delete cascade,
-  school_id uuid not null references school_config(id) on delete cascade,
+  school_id uuid not null unique references school_config(id) on delete cascade,
   created_at timestamptz default now()
 );
 
@@ -170,6 +170,14 @@ create table if not exists teacher_device_loans (
   updated_at timestamptz default now()
 );
 
+-- 13. 운영자 (플랫폼 슈퍼관리자, 소속 학교 없음)
+create table if not exists operator_profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references auth.users(id) on delete cascade,
+  name text,
+  created_at timestamptz default now()
+);
+
 -- ============================================================
 -- RLS (Row Level Security) 설정
 -- ============================================================
@@ -186,6 +194,7 @@ alter table tutor_supports enable row level security;
 alter table students enable row level security;
 alter table chromebooks enable row level security;
 alter table teacher_device_loans enable row level security;
+alter table operator_profiles enable row level security;
 
 drop policy if exists "school_config_all"     on school_config;
 drop policy if exists "admin_profiles_all"    on admin_profiles;
@@ -212,6 +221,119 @@ create policy "tutor_supports_all"     on tutor_supports      for all using (tru
 create policy "students_all"           on students            for all using (true) with check (true);
 create policy "chromebooks_all"        on chromebooks         for all using (true) with check (true);
 create policy "teacher_device_loans_all" on teacher_device_loans for all using (true) with check (true);
+
+-- operator_profiles는 의도적으로 전체허용(_all) 정책을 두지 않습니다.
+-- INSERT/UPDATE/DELETE는 Supabase Dashboard(service_role)에서만 가능하고,
+-- 본인 여부 확인용 SELECT만 허용합니다.
+drop policy if exists "operator_profiles_self_select" on operator_profiles;
+create policy "operator_profiles_self_select" on operator_profiles
+  for select using (auth.uid() = user_id);
+
+-- ============================================================
+-- 운영자 페이지 — 집계 뷰 / 함수 / 인덱스
+-- (운영자 페이지.md 5~6장 구현)
+-- ============================================================
+
+-- 탭 사용 현황 뷰 — 학교별 × 탭별 활동 집계
+create or replace view school_tab_activity as
+with events as (
+  select t.school_id, '학급관리'::text as tab, t.created_at as at
+    from classrooms t
+
+  union all
+  -- classroom_devices(기기 수량 편집)는 /admin/classrooms 안의 기능이므로 같은 '학급관리' 탭으로 집계
+  select c.school_id, '학급관리'::text as tab, cd.updated_at as at
+    from classroom_devices cd
+    join classrooms c on c.id = cd.classroom_id
+
+  union all
+  select t.school_id, '고장신고'::text as tab, t.reported_at as at from repair_reports t
+  union all
+  select t.school_id, '공유기기'::text as tab, t.created_at as at  from shared_devices t
+  union all
+  select t.school_id, '대여관리'::text as tab, t.rented_at as at   from rentals t
+  union all
+  select t.school_id, '크롬북'::text as tab,   t.created_at as at  from chromebooks t
+  union all
+  select t.school_id, '튜터지원'::text as tab, t.created_at as at  from tutor_supports t
+  union all
+  select t.school_id, '교사대여'::text as tab, t.created_at as at  from teacher_device_loans t
+)
+select
+  school_id,
+  tab,
+  count(*)                                                        as total_count,
+  count(*) filter (where at > now() - interval '30 days')         as recent_count,
+  max(at)                                                         as last_activity,
+  case
+    when count(*) = 0                                       then '미사용'
+    when max(at) < now() - interval '90 days'               then '초기설정만'
+    when count(*) filter (where at > now() - interval '30 days') >= 5 then '활발'
+    when count(*) filter (where at > now() - interval '30 days') >= 1 then '저조'
+    else '초기설정만'
+  end                                                             as status
+from events
+where at is not null          -- classroom_devices.updated_at은 nullable
+group by school_id, tab;
+
+-- 학교 요약 뷰 — KPI 카드 + 학교 목록 테이블
+create or replace view school_overview as
+select
+  s.id                                              as school_id,
+  s.school_name,
+  s.school_code,
+  s.created_at                                      as joined_at,
+  (select count(*) from classrooms c where c.school_id = s.id)   as classroom_count,
+  (select count(*) from chromebooks cb where cb.school_id = s.id) as chromebook_count,
+  (select coalesce(sum(total_quantity), 0)
+     from shared_devices sd where sd.school_id = s.id)            as shared_device_count,
+  (select max(last_activity) from school_tab_activity a
+     where a.school_id = s.id)                                    as last_activity,
+  (select count(*) from repair_reports r
+     where r.school_id = s.id
+       and r.status <> '처리 완료'
+       and r.reported_at < now() - interval '30 days')            as stale_repair_count
+from school_config s;
+
+-- 운영자 전용 함수 — 학교별 관리자 이메일 조회
+-- auth.users는 PostgREST에 노출되지 않으므로 SECURITY DEFINER 함수로 우회하되,
+-- 함수 내부에서 자체적으로 운영자 권한을 검증한다.
+create or replace function operator_school_admins()
+returns table(school_id uuid, admin_email text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from operator_profiles where user_id = auth.uid()) then
+    raise exception 'not authorized';
+  end if;
+  return query
+    select ap.school_id, u.email::text
+    from admin_profiles ap
+    join auth.users u on u.id = ap.user_id;
+end;
+$$;
+
+grant execute on function operator_school_admins() to authenticated;
+
+-- 인덱스 — 학교 수가 늘면 UNION ALL 집계가 느려지므로 미리 추가
+create index if not exists idx_classrooms_school_created
+  on classrooms (school_id, created_at);
+create index if not exists idx_repair_school_reported
+  on repair_reports (school_id, reported_at);
+create index if not exists idx_rentals_school_rented
+  on rentals (school_id, rented_at);
+create index if not exists idx_shared_devices_school_created
+  on shared_devices (school_id, created_at);
+create index if not exists idx_chromebooks_school_created
+  on chromebooks (school_id, created_at);
+create index if not exists idx_tutor_school_created
+  on tutor_supports (school_id, created_at);
+create index if not exists idx_teacher_loans_school_created
+  on teacher_device_loans (school_id, created_at);
+create index if not exists idx_classroom_devices_classroom
+  on classroom_devices (classroom_id, updated_at);
 
 -- ============================================================
 -- [기존 DB 마이그레이션] 이미 스키마를 실행한 경우 아래 SQL만 실행하세요

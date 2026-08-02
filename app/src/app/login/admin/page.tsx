@@ -51,12 +51,21 @@ export default function AdminLoginPage() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: signInData, error } = await supabase.auth.signInWithPassword({
         email: loginEmail,
         password: loginPassword,
       })
       if (error) { setError('이메일 또는 비밀번호가 올바르지 않습니다.'); return }
-      router.push('/admin/dashboard')
+
+      const { data: operatorProfile, error: operatorErr } = await supabase
+        .from('operator_profiles')
+        .select('id')
+        .eq('user_id', signInData.user.id)
+        .maybeSingle()
+
+      if (operatorErr) { setError(`권한 확인 실패: ${operatorErr.message}`); return }
+
+      router.push(operatorProfile ? '/operator/dashboard' : '/admin/dashboard')
     } catch {
       setError('로그인 중 오류가 발생했습니다.')
     } finally {
