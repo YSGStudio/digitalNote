@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { formatDate } from '@/lib/utils'
+import { logAudit } from '@/lib/audit'
 
 function toLocalDateString(date: Date) {
   const y = date.getFullYear()
@@ -21,6 +22,7 @@ export default function TeacherRentalsPage() {
   const router = useRouter()
   const [classroomId, setClassroomId] = useState('')
   const [schoolId, setSchoolId] = useState('')
+  const [className, setClassName] = useState('')
   const [tab, setTab] = useState<'all' | 'my'>('all')
   const [allRentals, setAllRentals] = useState<Rental[]>([])
   const [myRentals, setMyRentals] = useState<Rental[]>([])
@@ -62,6 +64,7 @@ export default function TeacherRentalsPage() {
     if (!session) { router.push('/login/teacher'); return }
     setClassroomId(session.classroomId)
     setSchoolId(session.school_id)
+    setClassName(session.className)
     load(session.classroomId, session.school_id)
   }, [router, load])
 
@@ -81,21 +84,34 @@ export default function TeacherRentalsPage() {
     setSubmitting(true)
     setError('')
     const supabase = createClient()
-    await Promise.all([
-      supabase.from('rentals').insert({
-        school_id: schoolId,
-        classroom_id: classroomId,
-        device_id: form.device_id,
-        quantity: qty,
-        status: '대여 중',
-        rented_at: rentedAt,
-        description: form.description.trim() || null,
-      }),
+    const [{ data: inserted }] = await Promise.all([
+      supabase
+        .from('rentals')
+        .insert({
+          school_id: schoolId,
+          classroom_id: classroomId,
+          device_id: form.device_id,
+          quantity: qty,
+          status: '대여 중',
+          rented_at: rentedAt,
+          description: form.description.trim() || null,
+        })
+        .select('id')
+        .single(),
       supabase
         .from('shared_devices')
         .update({ available_quantity: device.available_quantity - qty })
         .eq('id', form.device_id),
     ])
+    await logAudit({
+      schoolId,
+      tableName: 'rentals',
+      recordId: inserted?.id,
+      action: 'insert',
+      summary: `대여 신청: ${device.device_name} ${qty}대`,
+      changes: { device_name: device.device_name, quantity: qty },
+      actor: `${className} (교사)`,
+    })
     setSubmitting(false)
     setModalOpen(false)
     setForm({ device_id: '', quantity: '1', rental_date: '', description: '' })
@@ -109,6 +125,15 @@ export default function TeacherRentalsPage() {
       .from('rentals')
       .update({ status: '반납 요청 중' })
       .eq('id', rental.id)
+    await logAudit({
+      schoolId,
+      tableName: 'rentals',
+      recordId: rental.id,
+      action: 'update',
+      summary: `반납 요청: ${rental.shared_devices?.device_name ?? '-'}`,
+      changes: { status: { old: rental.status, new: '반납 요청 중' } },
+      actor: `${className} (교사)`,
+    })
     setRequesting(null)
     load(classroomId, schoolId)
   }

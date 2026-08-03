@@ -110,6 +110,20 @@ export interface Chromebook {
   students?: Student
 }
 
+export type AuditAction = 'insert' | 'update' | 'delete'
+
+export interface AuditLog {
+  id: string
+  school_id: string | null
+  actor_email: string
+  table_name: string
+  record_id: string | null
+  action: AuditAction
+  summary: string
+  changes: Record<string, unknown> | null
+  created_at: string
+}
+
 export type TabActivityStatus = '미사용' | '초기설정만' | '저조' | '활발'
 
 export interface SchoolOverview {

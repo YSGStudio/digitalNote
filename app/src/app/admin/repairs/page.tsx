@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatDate } from '@/lib/utils'
 import { useSchool } from '@/lib/school-context'
+import { logAudit } from '@/lib/audit'
 
 const STATUS_ORDER: RepairStatus[] = ['접수 대기', '수리 중', '처리 완료']
 
@@ -45,6 +46,14 @@ export default function AdminRepairsPage() {
       .from('repair_reports')
       .update({ status: next, resolved_at: next === '처리 완료' ? new Date().toISOString() : null })
       .eq('id', report.id)
+    await logAudit({
+      schoolId,
+      tableName: 'repair_reports',
+      recordId: report.id,
+      action: 'update',
+      summary: `고장 신고 처리 상태 변경 (${report.classrooms?.class_name ?? '-'} · ${report.devices?.device_type ?? '-'})`,
+      changes: { status: { old: report.status, new: next } },
+    })
     await load()
     setUpdating(null)
   }

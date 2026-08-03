@@ -5,8 +5,11 @@ import { createClient } from '@/lib/supabase'
 import { Device } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { useSchool } from '@/lib/school-context'
+import { logAudit } from '@/lib/audit'
 
 export default function AdminDeviceTypesPage() {
+  const { schoolId } = useSchool()
   const [devices, setDevices] = useState<Device[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState({ device_type: '', description: '' })
@@ -24,9 +27,21 @@ export default function AdminDeviceTypesPage() {
     if (!form.device_type.trim()) return
     setSaving(true)
     const supabase = createClient()
-    await supabase.from('devices').insert({
-      device_type: form.device_type,
-      description: form.description || null,
+    const { data: inserted } = await supabase
+      .from('devices')
+      .insert({
+        device_type: form.device_type,
+        description: form.description || null,
+      })
+      .select('id')
+      .single()
+    await logAudit({
+      schoolId,
+      tableName: 'devices',
+      recordId: inserted?.id,
+      action: 'insert',
+      summary: `기기 종류 "${form.device_type}" 추가`,
+      changes: { device_type: form.device_type, description: form.description || null },
     })
     setSaving(false)
     setModalOpen(false)
@@ -35,8 +50,16 @@ export default function AdminDeviceTypesPage() {
   }
 
   async function handleDelete(id: string) {
+    const target = devices.find((d) => d.id === id)
     const supabase = createClient()
     await supabase.from('devices').delete().eq('id', id)
+    await logAudit({
+      schoolId,
+      tableName: 'devices',
+      recordId: id,
+      action: 'delete',
+      summary: `기기 종류 "${target?.device_type ?? id}" 삭제`,
+    })
     load()
   }
 

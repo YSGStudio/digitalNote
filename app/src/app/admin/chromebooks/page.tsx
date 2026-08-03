@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { formatDate } from '@/lib/utils'
 import { useSchool } from '@/lib/school-context'
+import { logAudit, diffFields } from '@/lib/audit'
 
 type StudentWithDevice = Student & { chromebooks: Chromebook[] }
 type ChromebookWithStudent = Chromebook & { students: Student | null }
@@ -241,6 +242,13 @@ export default function ChromebooksPage() {
           .eq('id', existingMap.get(r.device_number)!)
         if (updateErr) throw new Error(`기기 업데이트 실패: ${updateErr.message}`)
       }
+      await logAudit({
+        schoolId,
+        tableName: 'chromebooks',
+        action: 'update',
+        summary: `기기 목록 업로드: 신규 ${toInsert.length}개 / 업데이트 ${toUpdate.length}개`,
+        changes: { inserted: toInsert.map((r) => r.device_number), updated: toUpdate.map((r) => r.device_number) },
+      })
     } else if (uploadType === 'students') {
       const { data: existing } = await supabase
         .from('students')
@@ -298,6 +306,13 @@ export default function ChromebooksPage() {
           )
         }
       }
+      await logAudit({
+        schoolId,
+        tableName: 'students',
+        action: 'update',
+        summary: `학생 명단 업로드: 신규 ${newCount}명 / 업데이트 ${updateCount}명`,
+        changes: { total: studentUploadRows.length, new: newCount, updated: updateCount },
+      })
     }
 
     setUploadSaving(false)
@@ -323,6 +338,18 @@ export default function ChromebooksPage() {
       .from('chromebooks')
       .update({ student_id: assignTarget.id, assigned_at: new Date().toISOString() })
       .eq('id', device.id)
+    await logAudit({
+      schoolId,
+      tableName: 'chromebooks',
+      recordId: device.id,
+      action: 'update',
+      summary: `기기 배정: ${assignTarget.name} ← ${device.device_number}`,
+      changes: {
+        student: assignTarget.name,
+        device_number: device.device_number,
+        previous_device: assignTarget.chromebooks?.[0]?.device_number ?? null,
+      },
+    })
     setAssigning(false)
     setAssignTarget(null)
     setDeviceSearch('')
@@ -335,6 +362,14 @@ export default function ChromebooksPage() {
       .from('chromebooks')
       .update({ student_id: null, assigned_at: null })
       .eq('id', device.id)
+    await logAudit({
+      schoolId,
+      tableName: 'chromebooks',
+      recordId: device.id,
+      action: 'update',
+      summary: `기기 배정 해제: ${device.device_number}`,
+      changes: { student_id: { old: device.student_id, new: null } },
+    })
     load()
   }
 
@@ -343,6 +378,13 @@ export default function ChromebooksPage() {
       return
     const supabase = createClient()
     await supabase.from('students').delete().eq('id', student.id)
+    await logAudit({
+      schoolId,
+      tableName: 'students',
+      recordId: student.id,
+      action: 'delete',
+      summary: `학생 삭제: ${student.name}`,
+    })
     load()
   }
 
@@ -362,6 +404,13 @@ export default function ChromebooksPage() {
       .eq('grade', '6')
     setPromoBusy(null)
     if (error) { setPromoErr(`졸업 처리 실패: ${error.message}`); return }
+    await logAudit({
+      schoolId,
+      tableName: 'students',
+      action: 'delete',
+      summary: `졸업 처리: 6학년 ${sixthGraders.length}명 삭제`,
+      changes: { names: sixthGraders.map((s) => s.name) },
+    })
     setPromoMsg(`졸업생 ${sixthGraders.length}명을 삭제했습니다.`)
     load()
   }
@@ -390,6 +439,12 @@ export default function ChromebooksPage() {
         return
       }
     }
+    await logAudit({
+      schoolId,
+      tableName: 'students',
+      action: 'update',
+      summary: '일괄 진급 처리: 전체 학년 +1, 반·번호 초기화',
+    })
     setPromoBusy(null)
     setPromoMsg('진급 완료 — 전체 학년 +1, 반·번호 초기화됨. 이제 3단계에서 새 반편성 명단을 업로드하세요.')
     load()
@@ -475,6 +530,14 @@ export default function ChromebooksPage() {
         }
       }
       const ambiguousCount = promoRows.filter((r) => r._status === 'ambiguous').length
+      const matchedCount = promoRows.filter((r) => r._status === 'matched').length
+      const newRowCount = promoRows.filter((r) => r._status === 'new').length
+      await logAudit({
+        schoolId,
+        tableName: 'students',
+        action: 'update',
+        summary: `반편성 적용: 매칭 ${matchedCount}명 / 신규 ${newRowCount}명 / 동명이인 제외 ${ambiguousCount}명`,
+      })
       setPromoMsg(
         ambiguousCount > 0
           ? `반편성 적용 완료. 동명이인 ${ambiguousCount}명은 자동 처리되지 않았으니 학생 현황에서 직접 수정해주세요.`
@@ -495,16 +558,28 @@ export default function ChromebooksPage() {
     setDeviceFormSaving(true)
     setDeviceFormErr('')
     const supabase = createClient()
-    const { error } = await supabase.from('chromebooks').insert({
-      school_id: schoolId,
-      device_number: deviceForm.device_number.trim(),
-      device_year: deviceForm.device_year.trim() || null,
-    })
+    const { data: inserted, error } = await supabase
+      .from('chromebooks')
+      .insert({
+        school_id: schoolId,
+        device_number: deviceForm.device_number.trim(),
+        device_year: deviceForm.device_year.trim() || null,
+      })
+      .select('id')
+      .single()
     if (error) {
       setDeviceFormErr(error.code === '23505' ? '이미 등록된 기기번호입니다.' : error.message)
       setDeviceFormSaving(false)
       return
     }
+    await logAudit({
+      schoolId,
+      tableName: 'chromebooks',
+      recordId: inserted?.id,
+      action: 'insert',
+      summary: `크롬북 추가: ${deviceForm.device_number.trim()}`,
+      changes: { device_number: deviceForm.device_number.trim(), device_year: deviceForm.device_year.trim() || null },
+    })
     setDeviceFormSaving(false)
     setDeviceModal(false)
     setDeviceForm({ device_number: '', device_year: '' })
@@ -513,8 +588,16 @@ export default function ChromebooksPage() {
 
   async function handleDeleteDevice(id: string) {
     if (!confirm('기기를 삭제하시겠습니까? 배정된 학생 데이터는 유지됩니다.')) return
+    const target = chromebooks.find((c) => c.id === id)
     const supabase = createClient()
     await supabase.from('chromebooks').delete().eq('id', id)
+    await logAudit({
+      schoolId,
+      tableName: 'chromebooks',
+      recordId: id,
+      action: 'delete',
+      summary: `크롬북 삭제: ${target?.device_number ?? id}`,
+    })
     setSelectedDeviceIds((prev) => { const next = new Set(prev); next.delete(id); return next })
     load()
   }
@@ -523,8 +606,16 @@ export default function ChromebooksPage() {
     if (!selectedDeviceIds.size) return
     if (!confirm(`선택한 기기 ${selectedDeviceIds.size}개를 삭제하시겠습니까?\n배정된 학생 데이터는 유지됩니다.`)) return
     setDeletingDevices(true)
+    const targets = chromebooks.filter((c) => selectedDeviceIds.has(c.id))
     const supabase = createClient()
     await supabase.from('chromebooks').delete().in('id', [...selectedDeviceIds])
+    await logAudit({
+      schoolId,
+      tableName: 'chromebooks',
+      action: 'delete',
+      summary: `크롬북 일괄 삭제: ${targets.length}대`,
+      changes: { device_numbers: targets.map((t) => t.device_number) },
+    })
     setSelectedDeviceIds(new Set())
     setDeletingDevices(false)
     load()
@@ -587,14 +678,47 @@ export default function ChromebooksPage() {
       class_name: studentForm.class_name.trim() || null,
       student_number: studentForm.student_number.trim() || null,
     }
-    const { error } = editingStudent
-      ? await supabase.from('students').update(payload).eq('id', editingStudent.id)
-      : await supabase.from('students').insert({ ...payload, school_id: schoolId })
-
-    if (error) {
-      setStudentFormErr(`저장 실패: ${error.message}`)
-      setStudentSaving(false)
-      return
+    if (editingStudent) {
+      const { error } = await supabase.from('students').update(payload).eq('id', editingStudent.id)
+      if (error) {
+        setStudentFormErr(`저장 실패: ${error.message}`)
+        setStudentSaving(false)
+        return
+      }
+      const changes = diffFields(
+        editingStudent as unknown as Record<string, unknown>,
+        payload,
+        ['name', 'grade', 'class_name', 'student_number']
+      )
+      if (Object.keys(changes).length > 0) {
+        await logAudit({
+          schoolId,
+          tableName: 'students',
+          recordId: editingStudent.id,
+          action: 'update',
+          summary: `학생 정보 수정: ${payload.name}`,
+          changes,
+        })
+      }
+    } else {
+      const { data: inserted, error } = await supabase
+        .from('students')
+        .insert({ ...payload, school_id: schoolId })
+        .select('id')
+        .single()
+      if (error) {
+        setStudentFormErr(`저장 실패: ${error.message}`)
+        setStudentSaving(false)
+        return
+      }
+      await logAudit({
+        schoolId,
+        tableName: 'students',
+        recordId: inserted?.id,
+        action: 'insert',
+        summary: `학생 추가: ${payload.name}`,
+        changes: payload,
+      })
     }
     setStudentSaving(false)
     setStudentModal(false)

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import { getTeacherSession } from '@/lib/teacher-auth'
 import { TutorSupport } from '@/types'
 import { Button } from '@/components/ui/Button'
+import { logAudit } from '@/lib/audit'
 
 const PERIODS = ['1교시', '2교시', '3교시', '4교시', '5-1교시', '5-2교시', '6교시']
 const WEEK_DAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -111,6 +112,7 @@ export default function TeacherTutorPage() {
   const router = useRouter()
   const [classroomId, setClassroomId] = useState('')
   const [schoolId, setSchoolId] = useState('')
+  const [className, setClassName] = useState('')
   const [selectedDate, setSelectedDate] = useState(toLocalDateString(new Date()))
   const [selectedPeriod, setSelectedPeriod] = useState('')
   const [content, setContent] = useState('')
@@ -150,6 +152,7 @@ export default function TeacherTutorPage() {
     if (!session) { router.push('/login/teacher'); return }
     setClassroomId(session.classroomId)
     setSchoolId(session.school_id)
+    setClassName(session.className)
     loadMine(session.classroomId)
   }, [router, loadMine])
 
@@ -171,15 +174,28 @@ export default function TeacherTutorPage() {
     setSubmitting(true)
     setError('')
     const supabase = createClient()
-    const { error: err } = await supabase.from('tutor_supports').insert({
-      school_id: schoolId,
-      classroom_id: classroomId,
-      support_date: selectedDate,
-      period: selectedPeriod,
-      content: content.trim(),
-    })
+    const { data: inserted, error: err } = await supabase
+      .from('tutor_supports')
+      .insert({
+        school_id: schoolId,
+        classroom_id: classroomId,
+        support_date: selectedDate,
+        period: selectedPeriod,
+        content: content.trim(),
+      })
+      .select('id')
+      .single()
     setSubmitting(false)
     if (err) { setError(`저장 실패: ${err.message}`); return }
+    await logAudit({
+      schoolId,
+      tableName: 'tutor_supports',
+      recordId: inserted?.id,
+      action: 'insert',
+      summary: `튜터 수업 지원 신청: ${selectedDate} ${selectedPeriod}`,
+      changes: { support_date: selectedDate, period: selectedPeriod, content: content.trim() },
+      actor: `${className} (교사)`,
+    })
     setSelectedPeriod('')
     setContent('')
     await Promise.all([loadMine(classroomId), loadDate(selectedDate, schoolId)])
@@ -188,8 +204,17 @@ export default function TeacherTutorPage() {
   async function handleDelete(id: string) {
     if (!window.confirm('이 신청을 삭제할까요?')) return
     setDeleting(id)
+    const target = [...allSupports, ...dateAllSupports].find((s) => s.id === id)
     const supabase = createClient()
     await supabase.from('tutor_supports').delete().eq('id', id)
+    await logAudit({
+      schoolId,
+      tableName: 'tutor_supports',
+      recordId: id,
+      action: 'delete',
+      summary: `튜터 수업 지원 삭제: ${target?.support_date ?? '-'} ${target?.period ?? ''}`,
+      actor: `${className} (교사)`,
+    })
     setDeleting(null)
     await Promise.all([loadMine(classroomId), loadDate(selectedDate, schoolId)])
   }

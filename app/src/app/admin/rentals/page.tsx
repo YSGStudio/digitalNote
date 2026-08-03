@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatDate } from '@/lib/utils'
 import { useSchool } from '@/lib/school-context'
+import { logAudit } from '@/lib/audit'
 
 export default function AdminRentalsPage() {
   const { schoolId, loading: schoolLoading } = useSchool()
@@ -45,6 +46,14 @@ export default function AdminRentalsPage() {
             .eq('id', rental.device_id)
         : Promise.resolve(),
     ])
+    await logAudit({
+      schoolId,
+      tableName: 'rentals',
+      recordId: rental.id,
+      action: 'update',
+      summary: `대여 반납 처리 (${rental.classrooms?.class_name ?? '-'} · ${device?.device_name ?? '-'})`,
+      changes: { status: { old: rental.status, new: '반납 완료' } },
+    })
     setReturning(null)
     load()
   }

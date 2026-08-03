@@ -336,6 +336,31 @@ create index if not exists idx_classroom_devices_classroom
   on classroom_devices (classroom_id, updated_at);
 
 -- ============================================================
+-- 관리자 감사 로그
+-- ============================================================
+
+-- 14. audit_logs — 관리자가 데이터를 수정할 때마다 남는 기록
+create table if not exists audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid references school_config(id) on delete cascade,
+  actor_email text not null,
+  table_name text not null,
+  record_id uuid,
+  action text not null check (action in ('insert', 'update', 'delete')),
+  summary text not null,
+  changes jsonb,
+  created_at timestamptz default now()
+);
+
+alter table audit_logs enable row level security;
+
+drop policy if exists "audit_logs_all" on audit_logs;
+create policy "audit_logs_all" on audit_logs for all using (true) with check (true);
+
+create index if not exists idx_audit_logs_school_created
+  on audit_logs (school_id, created_at desc);
+
+-- ============================================================
 -- [기존 DB 마이그레이션] 이미 스키마를 실행한 경우 아래 SQL만 실행하세요
 -- ============================================================
 --

@@ -6,6 +6,7 @@ import { SharedDevice } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useSchool } from '@/lib/school-context'
+import { logAudit, diffFields } from '@/lib/audit'
 
 export default function AdminDevicesPage() {
   const { schoolId, loading: schoolLoading } = useSchool()
@@ -49,21 +50,49 @@ export default function AdminDevicesPage() {
     const supabase = createClient()
     if (editing) {
       const diff = qty - editing.total_quantity
+      const newAvailable = Math.max(0, editing.available_quantity + diff)
       await supabase
         .from('shared_devices')
         .update({
           device_name: form.device_name,
           total_quantity: qty,
-          available_quantity: Math.max(0, editing.available_quantity + diff),
+          available_quantity: newAvailable,
         })
         .eq('id', editing.id)
+      const changes = diffFields(
+        editing as unknown as Record<string, unknown>,
+        { device_name: form.device_name, total_quantity: qty, available_quantity: newAvailable },
+        ['device_name', 'total_quantity', 'available_quantity']
+      )
+      if (Object.keys(changes).length > 0) {
+        await logAudit({
+          schoolId,
+          tableName: 'shared_devices',
+          recordId: editing.id,
+          action: 'update',
+          summary: `공유기기 "${form.device_name}" 수정`,
+          changes,
+        })
+      }
     } else {
-      await supabase.from('shared_devices').insert({
-        school_id: schoolId,
-        device_name: form.device_name,
-        total_quantity: qty,
-        available_quantity: qty,
-        is_active: true,
+      const { data: inserted } = await supabase
+        .from('shared_devices')
+        .insert({
+          school_id: schoolId,
+          device_name: form.device_name,
+          total_quantity: qty,
+          available_quantity: qty,
+          is_active: true,
+        })
+        .select('id')
+        .single()
+      await logAudit({
+        schoolId,
+        tableName: 'shared_devices',
+        recordId: inserted?.id,
+        action: 'insert',
+        summary: `공유기기 "${form.device_name}" 추가`,
+        changes: { device_name: form.device_name, total_quantity: qty },
       })
     }
     setSaving(false)
@@ -77,6 +106,13 @@ export default function AdminDevicesPage() {
     const supabase = createClient()
     await supabase.from('rentals').delete().eq('device_id', d.id)
     await supabase.from('shared_devices').delete().eq('id', d.id)
+    await logAudit({
+      schoolId,
+      tableName: 'shared_devices',
+      recordId: d.id,
+      action: 'delete',
+      summary: `공유기기 "${d.device_name}" 삭제`,
+    })
     setDeleting(null)
     load()
   }
@@ -84,6 +120,14 @@ export default function AdminDevicesPage() {
   async function toggleActive(d: SharedDevice) {
     const supabase = createClient()
     await supabase.from('shared_devices').update({ is_active: !d.is_active }).eq('id', d.id)
+    await logAudit({
+      schoolId,
+      tableName: 'shared_devices',
+      recordId: d.id,
+      action: 'update',
+      summary: `공유기기 "${d.device_name}" ${d.is_active ? '비활성화' : '활성화'}`,
+      changes: { is_active: { old: d.is_active, new: !d.is_active } },
+    })
     load()
   }
 

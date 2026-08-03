@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal'
 import { SignaturePad, SignaturePadHandle } from '@/components/ui/SignaturePad'
 import { formatDate } from '@/lib/utils'
 import { useSchool } from '@/lib/school-context'
+import { logAudit } from '@/lib/audit'
 
 const DEVICE_TYPES = ['iPad', '노트북', '기타']
 const PART_OPTIONS = ['충전기', '케이블', '케이스', '펜', '기타']
@@ -125,23 +126,35 @@ export default function TeacherRentalsPage() {
     setAddSaving(true)
     setAddErr('')
     const supabase = createClient()
-    const { error } = await supabase.from('teacher_device_loans').insert({
-      school_id: schoolId,
-      status: '대여중',
-      borrower_name: addForm.borrower_name.trim(),
-      rent_date: addForm.rent_date,
-      device_type: addForm.device_type || null,
-      device_etc: addForm.device_type === '기타' ? addForm.device_etc.trim() || null : null,
-      model: addForm.model.trim() || null,
-      asset_no: addForm.asset_no.trim() || null,
-      parts: addForm.parts.length ? addForm.parts : null,
-      parts_etc: addForm.parts.includes('기타') ? addForm.parts_etc.trim() || null : null,
-      note: addForm.note.trim() || null,
-      sig_borrower: borrowerSigRef.current!.toDataURL(),
-      sig_manager_out: managerOutSigRef.current!.toDataURL(),
-    })
+    const { data: inserted, error } = await supabase
+      .from('teacher_device_loans')
+      .insert({
+        school_id: schoolId,
+        status: '대여중',
+        borrower_name: addForm.borrower_name.trim(),
+        rent_date: addForm.rent_date,
+        device_type: addForm.device_type || null,
+        device_etc: addForm.device_type === '기타' ? addForm.device_etc.trim() || null : null,
+        model: addForm.model.trim() || null,
+        asset_no: addForm.asset_no.trim() || null,
+        parts: addForm.parts.length ? addForm.parts : null,
+        parts_etc: addForm.parts.includes('기타') ? addForm.parts_etc.trim() || null : null,
+        note: addForm.note.trim() || null,
+        sig_borrower: borrowerSigRef.current!.toDataURL(),
+        sig_manager_out: managerOutSigRef.current!.toDataURL(),
+      })
+      .select('id')
+      .single()
     setAddSaving(false)
     if (error) { setAddErr(`저장 실패: ${error.message}`); return }
+    await logAudit({
+      schoolId,
+      tableName: 'teacher_device_loans',
+      recordId: inserted?.id,
+      action: 'insert',
+      summary: `교사기기대여 등록: ${addForm.borrower_name.trim()} (${(addForm.device_type === '기타' ? addForm.device_etc : addForm.device_type) || '기기미지정'})`,
+      changes: { borrower_name: addForm.borrower_name.trim(), model: addForm.model.trim() || null, asset_no: addForm.asset_no.trim() || null },
+    })
     setAddModal(false)
     load()
   }
@@ -183,6 +196,14 @@ export default function TeacherRentalsPage() {
       .eq('id', returnTarget.id)
     setReturnSaving(false)
     if (error) { setReturnErr(`저장 실패: ${error.message}`); return }
+    await logAudit({
+      schoolId,
+      tableName: 'teacher_device_loans',
+      recordId: returnTarget.id,
+      action: 'update',
+      summary: `교사기기대여 반납 처리: ${returnTarget.borrower_name}`,
+      changes: { status: { old: '대여중', new: '반납완료' }, condition: { old: null, new: returnForm.condition } },
+    })
     setReturnTarget(null)
     load()
   }

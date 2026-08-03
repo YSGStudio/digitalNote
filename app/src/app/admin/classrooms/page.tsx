@@ -6,6 +6,7 @@ import { Classroom, ClassroomDevice, Device } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useSchool } from '@/lib/school-context'
+import { logAudit } from '@/lib/audit'
 
 interface DeviceSummary {
   device_type: string
@@ -31,6 +32,7 @@ export default function AdminClassroomsPage() {
 
   const [allDevices, setAllDevices] = useState<Device[]>([])
   const [quantities, setQuantities] = useState<Record<string, number>>({})
+  const [originalQuantities, setOriginalQuantities] = useState<Record<string, number>>({})
   const [editMode, setEditMode] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
@@ -136,6 +138,24 @@ export default function AdminClassroomsPage() {
       return
     }
 
+    const changedDevices = allDevices
+      .filter((d) => (originalQuantities[d.id] ?? 0) !== (quantities[d.id] ?? 0))
+      .map((d) => ({
+        device_type: d.device_type,
+        old: originalQuantities[d.id] ?? 0,
+        new: quantities[d.id] ?? 0,
+      }))
+    if (changedDevices.length > 0) {
+      await logAudit({
+        schoolId,
+        tableName: 'classroom_devices',
+        recordId: detailClassroom.id,
+        action: 'update',
+        summary: `학급 "${detailClassroom.class_name}" 기기 수량 변경`,
+        changes: { classroom: detailClassroom.class_name, devices: changedDevices },
+      })
+    }
+
     await load()
 
     setClassrooms((prev) => {
@@ -160,16 +180,28 @@ export default function AdminClassroomsPage() {
     setSaving(true)
     setSaveError('')
     const supabase = createClient()
-    const { error } = await supabase.from('classrooms').insert({
-      school_id: schoolId,
-      class_name: form.class_name.trim(),
-      teacher_name: form.teacher_name.trim() || null,
-    })
+    const { data: inserted, error } = await supabase
+      .from('classrooms')
+      .insert({
+        school_id: schoolId,
+        class_name: form.class_name.trim(),
+        teacher_name: form.teacher_name.trim() || null,
+      })
+      .select('id')
+      .single()
     setSaving(false)
     if (error) {
       setSaveError(error.message.includes('unique') ? '이미 존재하는 학급명입니다.' : `오류: ${error.message}`)
       return
     }
+    await logAudit({
+      schoolId,
+      tableName: 'classrooms',
+      recordId: inserted?.id,
+      action: 'insert',
+      summary: `학급 "${form.class_name.trim()}" 추가`,
+      changes: { class_name: form.class_name.trim(), teacher_name: form.teacher_name.trim() || null },
+    })
     setAddModalOpen(false)
     load()
   }
@@ -179,6 +211,13 @@ export default function AdminClassroomsPage() {
     setDeleting(id)
     const supabase = createClient()
     await supabase.from('classrooms').delete().eq('id', id)
+    await logAudit({
+      schoolId,
+      tableName: 'classrooms',
+      recordId: id,
+      action: 'delete',
+      summary: `학급 "${name}" 삭제`,
+    })
     if (detailClassroom?.id === id) closeDetail()
     setDeleting(null)
     load()
@@ -382,7 +421,7 @@ export default function AdminClassroomsPage() {
                       <Button loading={editSaving} onClick={handleEditSave}>저장</Button>
                     </>
                   ) : (
-                    <Button variant="secondary" onClick={() => setEditMode(true)}>기기 수량 편집</Button>
+                    <Button variant="secondary" onClick={() => { setOriginalQuantities(quantities); setEditMode(true) }}>기기 수량 편집</Button>
                   )}
                 </div>
               </>

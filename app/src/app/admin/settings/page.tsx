@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { useSchool } from '@/lib/school-context'
+import { logAudit, diffFields } from '@/lib/audit'
 
 interface Config {
   id: string
@@ -87,6 +88,22 @@ export default function AdminSettingsPage() {
       setError(formatDbError(updateErr.message))
       setSaving(false)
       return
+    }
+
+    const changes = diffFields(
+      config as unknown as Record<string, unknown>,
+      { school_name: schoolName.trim(), school_code: schoolCode.trim() },
+      ['school_name', 'school_code']
+    )
+    if (Object.keys(changes).length > 0) {
+      await logAudit({
+        schoolId,
+        tableName: 'school_config',
+        recordId: config.id,
+        action: 'update',
+        summary: '학교 설정 변경',
+        changes,
+      })
     }
 
     setSaving(false)

@@ -9,11 +9,13 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { formatDate } from '@/lib/utils'
+import { logAudit } from '@/lib/audit'
 
 export default function TeacherRepairPage() {
   const router = useRouter()
   const [classroomId, setClassroomId] = useState('')
   const [schoolId, setSchoolId] = useState('')
+  const [className, setClassName] = useState('')
   const [reports, setReports] = useState<RepairReport[]>([])
   const [myDevices, setMyDevices] = useState<ClassroomDevice[]>([])
   const [modalOpen, setModalOpen] = useState(false)
@@ -44,6 +46,7 @@ export default function TeacherRepairPage() {
     if (!session) { router.push('/login/teacher'); return }
     setClassroomId(session.classroomId)
     setSchoolId(session.school_id)
+    setClassName(session.className)
     load(session.classroomId)
   }, [router, load])
 
@@ -55,13 +58,27 @@ export default function TeacherRepairPage() {
     setSubmitting(true)
     setError('')
     const supabase = createClient()
-    await supabase.from('repair_reports').insert({
-      school_id: schoolId,
-      classroom_id: classroomId,
-      device_id: form.device_id,
-      quantity: qty,
-      description: form.description || null,
-      status: '접수 대기',
+    const deviceType = myDevices.find((d) => d.device_id === form.device_id)?.devices?.device_type
+    const { data: inserted } = await supabase
+      .from('repair_reports')
+      .insert({
+        school_id: schoolId,
+        classroom_id: classroomId,
+        device_id: form.device_id,
+        quantity: qty,
+        description: form.description || null,
+        status: '접수 대기',
+      })
+      .select('id')
+      .single()
+    await logAudit({
+      schoolId,
+      tableName: 'repair_reports',
+      recordId: inserted?.id,
+      action: 'insert',
+      summary: `고장 신고: ${deviceType ?? '-'} ${qty}대`,
+      changes: { device_type: deviceType, quantity: qty, description: form.description || null },
+      actor: `${className} (교사)`,
     })
     setSubmitting(false)
     setModalOpen(false)

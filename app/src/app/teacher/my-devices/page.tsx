@@ -6,14 +6,18 @@ import { createClient } from '@/lib/supabase'
 import { getTeacherSession } from '@/lib/teacher-auth'
 import { ClassroomDevice, Device } from '@/types'
 import { Button } from '@/components/ui/Button'
+import { logAudit } from '@/lib/audit'
 
 export default function MyDevicesPage() {
   const router = useRouter()
   const [classroomId, setClassroomId] = useState('')
+  const [schoolId, setSchoolId] = useState('')
+  const [className, setClassName] = useState('')
   const [allDevices, setAllDevices] = useState<Device[]>([])
   const [myDevices, setMyDevices] = useState<ClassroomDevice[]>([])
   const [editMode, setEditMode] = useState(false)
   const [quantities, setQuantities] = useState<Record<string, number>>({})
+  const [originalQuantities, setOriginalQuantities] = useState<Record<string, number>>({})
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async (cid: string) => {
@@ -37,6 +41,8 @@ export default function MyDevicesPage() {
     const session = getTeacherSession()
     if (!session) { router.push('/login/teacher'); return }
     setClassroomId(session.classroomId)
+    setSchoolId(session.school_id)
+    setClassName(session.className)
     load(session.classroomId)
   }, [router, load])
 
@@ -49,6 +55,24 @@ export default function MyDevicesPage() {
       quantity: quantities[d.id] ?? 0,
     }))
     await supabase.from('classroom_devices').upsert(upserts, { onConflict: 'classroom_id,device_id' })
+    const changedDevices = allDevices
+      .filter((d) => (originalQuantities[d.id] ?? 0) !== (quantities[d.id] ?? 0))
+      .map((d) => ({
+        device_type: d.device_type,
+        old: originalQuantities[d.id] ?? 0,
+        new: quantities[d.id] ?? 0,
+      }))
+    if (changedDevices.length > 0) {
+      await logAudit({
+        schoolId,
+        tableName: 'classroom_devices',
+        recordId: classroomId,
+        action: 'update',
+        summary: `학급 기기 수량 변경 (${className})`,
+        changes: { devices: changedDevices },
+        actor: `${className} (교사)`,
+      })
+    }
     await load(classroomId)
     setSaving(false)
     setEditMode(false)
@@ -59,7 +83,7 @@ export default function MyDevicesPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">내 학급 기기 현황</h1>
         {!editMode ? (
-          <Button variant="secondary" onClick={() => setEditMode(true)}>수량 수정</Button>
+          <Button variant="secondary" onClick={() => { setOriginalQuantities(quantities); setEditMode(true) }}>수량 수정</Button>
         ) : (
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setEditMode(false)}>취소</Button>
