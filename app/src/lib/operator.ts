@@ -1,6 +1,6 @@
 import { TabActivityStatus } from '@/types'
 
-export const TAB_ORDER = ['학급관리', '고장신고', '공유기기', '대여관리', '크롬북', '튜터지원', '교사대여']
+export const TAB_ORDER = ['학급관리', '고장신고', '공유기기', '대여관리', '크롬북', '튜터지원', '교사대여', '소프트웨어']
 
 export const TAB_ROUTES: Record<string, string> = {
   학급관리: '/admin/classrooms',
@@ -10,6 +10,7 @@ export const TAB_ROUTES: Record<string, string> = {
   크롬북: '/admin/chromebooks',
   튜터지원: '/admin/tutor',
   교사대여: '/admin/teacher-rentals',
+  소프트웨어: '/admin/software',
 }
 
 export const STATUS_STYLES: Record<TabActivityStatus, string> = {

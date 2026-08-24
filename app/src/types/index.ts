@@ -1,6 +1,7 @@
 export type RepairStatus = '접수 대기' | '수리 중' | '처리 완료'
 export type RentalStatus = '대여 중' | '반납 요청 중' | '반납 완료'
 export type TeacherLoanStatus = '대여중' | '반납완료'
+export type SoftwareRequestStatus = '처리중' | '심의완료'
 
 export interface SchoolConfig {
   id: string
@@ -175,4 +176,37 @@ export interface TeacherDeviceLoan {
 
   created_at: string
   updated_at: string
+}
+
+export interface ApprovedSoftware {
+  id: string
+  school_id: string
+  name: string
+  company: string | null
+  eduzip_registered: boolean
+  eduzip_url: string | null
+  note: string | null
+  is_active: boolean
+  source_request_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SoftwareRequest {
+  id: string
+  school_id: string
+  classroom_id: string | null
+  requester_name: string
+  name: string
+  company: string
+  eduzip_registered: boolean
+  eduzip_url: string
+  purpose: string | null
+  status: SoftwareRequestStatus
+  processed_at: string | null
+  processed_by: string | null
+  approved_software_id: string | null
+  created_at: string
+  updated_at: string
+  classrooms?: Classroom
 }

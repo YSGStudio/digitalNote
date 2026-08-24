@@ -15,6 +15,7 @@ const navItems = [
   { href: '/admin/teacher-rentals', label: '교사기기대여', icon: '📝' },
   { href: '/admin/tutor', label: '튜터 수업 지원', icon: '📚' },
   { href: '/admin/chromebooks', label: '크롬북 관리', icon: '🖥️' },
+  { href: '/admin/software', label: '소프트웨어 조회', icon: '🧩' },
   { href: '/admin/audit-logs', label: '감사 로그', icon: '🗒️' },
   { href: '/admin/settings', label: '학교 설정', icon: '🏫' },
 ]

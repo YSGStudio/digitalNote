@@ -178,6 +178,52 @@ create table if not exists operator_profiles (
   created_at timestamptz default now()
 );
 
+-- 14. 심의받은 소프트웨어 목록 (소프트웨어 조회 탭)
+create table if not exists approved_software (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references school_config(id) on delete cascade,
+  name text not null,
+  company text,
+  eduzip_registered boolean not null default false,
+  eduzip_url text,
+  note text,
+  is_active boolean not null default true,
+  source_request_id uuid,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- 학교 안에서 이름+회사 중복 방지 (앞뒤 공백·대소문자 무시)
+create unique index if not exists idx_approved_software_unique
+  on approved_software (school_id, lower(btrim(name)), lower(btrim(coalesce(company, ''))));
+
+-- 15. 교사가 신청한 소프트웨어
+create table if not exists software_requests (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references school_config(id) on delete cascade,
+  classroom_id uuid references classrooms(id) on delete set null,
+  requester_name text not null,
+  name text not null,
+  company text not null,
+  eduzip_registered boolean not null default false,
+  eduzip_url text not null,
+  purpose text,
+  status text not null default '처리중'
+    check (status in ('처리중', '심의완료')),
+  processed_at timestamptz,
+  processed_by text,
+  approved_software_id uuid references approved_software(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- approved_software.source_request_id 는 순환 참조를 피하기 위해 테이블 생성 후 FK 추가
+alter table approved_software
+  drop constraint if exists approved_software_source_request_fk;
+alter table approved_software
+  add constraint approved_software_source_request_fk
+  foreign key (source_request_id) references software_requests(id) on delete set null;
+
 -- ============================================================
 -- RLS (Row Level Security) 설정
 -- ============================================================
@@ -195,6 +241,8 @@ alter table students enable row level security;
 alter table chromebooks enable row level security;
 alter table teacher_device_loans enable row level security;
 alter table operator_profiles enable row level security;
+alter table approved_software enable row level security;
+alter table software_requests enable row level security;
 
 drop policy if exists "school_config_all"     on school_config;
 drop policy if exists "admin_profiles_all"    on admin_profiles;
@@ -208,6 +256,8 @@ drop policy if exists "tutor_supports_all"    on tutor_supports;
 drop policy if exists "students_all"          on students;
 drop policy if exists "chromebooks_all"       on chromebooks;
 drop policy if exists "teacher_device_loans_all" on teacher_device_loans;
+drop policy if exists "approved_software_all" on approved_software;
+drop policy if exists "software_requests_all" on software_requests;
 
 create policy "school_config_all"      on school_config      for all using (true) with check (true);
 create policy "admin_profiles_all"     on admin_profiles      for all using (true) with check (true);
@@ -221,6 +271,8 @@ create policy "tutor_supports_all"     on tutor_supports      for all using (tru
 create policy "students_all"           on students            for all using (true) with check (true);
 create policy "chromebooks_all"        on chromebooks         for all using (true) with check (true);
 create policy "teacher_device_loans_all" on teacher_device_loans for all using (true) with check (true);
+create policy "approved_software_all"  on approved_software   for all using (true) with check (true);
+create policy "software_requests_all" on software_requests  for all using (true) with check (true);
 
 -- operator_profiles는 의도적으로 전체허용(_all) 정책을 두지 않습니다.
 -- INSERT/UPDATE/DELETE는 Supabase Dashboard(service_role)에서만 가능하고,
@@ -258,6 +310,10 @@ with events as (
   select t.school_id, '튜터지원'::text as tab, t.created_at as at  from tutor_supports t
   union all
   select t.school_id, '교사대여'::text as tab, t.created_at as at  from teacher_device_loans t
+  union all
+  select t.school_id, '소프트웨어'::text as tab, t.created_at as at from approved_software t
+  union all
+  select t.school_id, '소프트웨어'::text as tab, t.created_at as at from software_requests t
 )
 select
   school_id,
@@ -294,6 +350,11 @@ select
        and r.status <> '처리 완료'
        and r.reported_at < now() - interval '30 days')            as stale_repair_count
 from school_config s;
+
+-- 뷰는 기본적으로 소유자(postgres) 권한으로 실행되어 RLS를 우회할 수 있으므로,
+-- 조회하는 사용자 권한으로 실행되도록 security_invoker를 켠다.
+alter view school_tab_activity set (security_invoker = on);
+alter view school_overview set (security_invoker = on);
 
 -- 운영자 전용 함수 — 학교별 관리자 이메일 조회
 -- auth.users는 PostgREST에 노출되지 않으므로 SECURITY DEFINER 함수로 우회하되,
@@ -334,12 +395,18 @@ create index if not exists idx_teacher_loans_school_created
   on teacher_device_loans (school_id, created_at);
 create index if not exists idx_classroom_devices_classroom
   on classroom_devices (classroom_id, updated_at);
+create index if not exists idx_approved_software_school_created
+  on approved_software (school_id, created_at);
+create index if not exists idx_software_requests_school_created
+  on software_requests (school_id, created_at);
+create index if not exists idx_software_requests_school_status
+  on software_requests (school_id, status);
 
 -- ============================================================
 -- 관리자 감사 로그
 -- ============================================================
 
--- 14. audit_logs — 관리자가 데이터를 수정할 때마다 남는 기록
+-- 16. audit_logs — 관리자가 데이터를 수정할 때마다 남는 기록
 create table if not exists audit_logs (
   id uuid primary key default gen_random_uuid(),
   school_id uuid references school_config(id) on delete cascade,
@@ -412,3 +479,8 @@ create index if not exists idx_audit_logs_school_created
 -- -- 6. classrooms 유니크 제약 변경
 -- alter table classrooms drop constraint if exists classrooms_class_name_key;
 -- alter table classrooms add constraint classrooms_school_class_unique unique(school_id, class_name);
+--
+-- -- 7. 소프트웨어 조회 탭 (approved_software / software_requests)
+-- --    위 "14. 심의받은 소프트웨어 목록" ~ "15. 교사가 신청한 소프트웨어" 블록과
+-- --    해당 RLS·인덱스 구문, 그리고 school_tab_activity 뷰 재생성 구문을 그대로 실행하세요.
+-- --    (모두 if not exists / create or replace 라 여러 번 실행해도 안전합니다)

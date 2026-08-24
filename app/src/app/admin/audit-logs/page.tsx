@@ -16,6 +16,8 @@ const TABLE_LABELS: Record<string, string> = {
   students: '학생',
   chromebooks: '크롬북',
   teacher_device_loans: '교사기기대여',
+  approved_software: '심의 소프트웨어',
+  software_requests: '소프트웨어 신청',
   school_config: '학교 설정',
 }
 
