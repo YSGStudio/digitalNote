@@ -78,6 +78,11 @@ export default function TeacherRentalsPage() {
   const returnerSigRef = useRef<SignaturePadHandle>(null)
   const managerInSigRef = useRef<SignaturePadHandle>(null)
 
+  const [deleteTarget, setDeleteTarget] = useState<TeacherDeviceLoan | null>(null)
+  const [deletePw, setDeletePw] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteErr, setDeleteErr] = useState('')
+
   const load = useCallback(async () => {
     if (!schoolId) return
     setLoading(true)
@@ -208,6 +213,62 @@ export default function TeacherRentalsPage() {
     load()
   }
 
+  function openDeleteModal(loan: TeacherDeviceLoan) {
+    setDeletePw('')
+    setDeleteErr('')
+    setDeleteTarget(loan)
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    if (!deletePw) { setDeleteErr('관리자 비밀번호를 입력해주세요.'); return }
+
+    setDeleting(true)
+    setDeleteErr('')
+    const supabase = createClient()
+
+    // 관리자 비밀번호 확인 (재로그인 시도)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user?.email) { setDeleteErr('사용자 정보를 불러올 수 없습니다.'); setDeleting(false); return }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: deletePw,
+    })
+    if (signInError) { setDeleteErr('비밀번호가 올바르지 않습니다.'); setDeleting(false); return }
+
+    const { error } = await supabase
+      .from('teacher_device_loans')
+      .delete()
+      .eq('id', deleteTarget.id)
+    setDeleting(false)
+    if (error) { setDeleteErr(`삭제 실패: ${error.message}`); return }
+
+    // 삭제된 기록은 복구할 수 없으므로 주요 항목을 감사 로그에 남깁니다. (서명 이미지는 제외)
+    await logAudit({
+      schoolId,
+      tableName: 'teacher_device_loans',
+      recordId: deleteTarget.id,
+      action: 'delete',
+      summary: `교사기기대여 삭제: ${deleteTarget.borrower_name} · ${deviceLabel(deleteTarget)} (${deleteTarget.status})`,
+      changes: {
+        status: deleteTarget.status,
+        borrower_name: deleteTarget.borrower_name,
+        device: deviceLabel(deleteTarget),
+        model: deleteTarget.model,
+        asset_no: deleteTarget.asset_no,
+        parts: partsLabel(deleteTarget),
+        rent_date: deleteTarget.rent_date,
+        return_date: deleteTarget.return_date,
+        condition: deleteTarget.condition === '기타' ? deleteTarget.condition_etc : deleteTarget.condition,
+        note: deleteTarget.note,
+        return_note: deleteTarget.return_note,
+      },
+    })
+    setDeleteTarget(null)
+    load()
+  }
+
   const filteredLoans = loans.filter((l) => {
     if (statusFilter !== 'all' && l.status !== statusFilter) return false
     if (!search) return true
@@ -292,9 +353,12 @@ export default function TeacherRentalsPage() {
                       .join(' · ') || '-'}
                   </p>
                 </div>
-                <Link href={`/admin/teacher-rentals/${loan.id}/document`} target="_blank">
-                  <Button size="sm" variant="secondary">대여증</Button>
-                </Link>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Link href={`/admin/teacher-rentals/${loan.id}/document`} target="_blank">
+                    <Button size="sm" variant="secondary">대여증</Button>
+                  </Link>
+                  <Button size="sm" variant="danger" onClick={() => openDeleteModal(loan)}>삭제</Button>
+                </div>
               </div>
 
               <div className="border-t border-dashed border-gray-200 px-5 py-4">
@@ -540,6 +604,53 @@ export default function TeacherRentalsPage() {
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="secondary" onClick={() => setReturnTarget(null)}>취소</Button>
               <Button loading={returnSaving} onClick={handleReturnSave}>저장 및 반납증 발급</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* 삭제 확인 모달 */}
+      <Modal open={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="대여 기록 삭제">
+        {deleteTarget && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+              <p className="font-medium text-gray-900">
+                {deleteTarget.borrower_name} · {deviceLabel(deleteTarget)}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-400">
+                {[
+                  formatDate(deleteTarget.rent_date),
+                  deleteTarget.model,
+                  deleteTarget.asset_no ? `자산 ${deleteTarget.asset_no}` : '',
+                  deleteTarget.status,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            </div>
+
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              대여증·반납증과 서명까지 <b>영구 삭제</b>되며 복구할 수 없습니다. 삭제 기록은 감사 로그에 남습니다.
+            </p>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">관리자 비밀번호 *</label>
+              <input
+                type="password"
+                value={deletePw}
+                onChange={(e) => setDeletePw(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !deleting) handleDelete() }}
+                className={INPUT_CLS}
+                placeholder="현재 로그인한 관리자 계정의 비밀번호"
+                autoFocus
+              />
+            </div>
+
+            {deleteErr && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{deleteErr}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="secondary" onClick={() => setDeleteTarget(null)}>취소</Button>
+              <Button variant="danger" loading={deleting} onClick={handleDelete}>삭제</Button>
             </div>
           </div>
         )}
