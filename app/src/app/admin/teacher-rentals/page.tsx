@@ -11,7 +11,7 @@ import { formatDate } from '@/lib/utils'
 import { useSchool } from '@/lib/school-context'
 import { logAudit } from '@/lib/audit'
 
-const DEVICE_TYPES = ['iPad', '노트북', '기타']
+const DEVICE_TYPES = ['아이패드9', '노트북', '갤럭시탭s6', '갤럭시탭s7', '기타']
 const PART_OPTIONS = ['충전기', '케이블', '케이스', '펜', '기타']
 const CONDITIONS = ['정상', '일부 손상', '고장', '기타']
 
@@ -291,7 +291,7 @@ export default function TeacherRentalsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">교사기기대여</h1>
           <p className="mt-1 text-sm text-gray-500">
-            교사 개인용 iPad·노트북 등의 대여증·반납증을 관리합니다. (계정 없이 서명만 받습니다)
+            교사 개인용 아이패드·노트북·갤럭시탭 등의 대여증·반납증을 관리합니다. (계정 없이 서명만 받습니다)
           </p>
         </div>
         <Button onClick={openAddModal}>+ 새 대여</Button>
