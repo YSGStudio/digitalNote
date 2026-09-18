@@ -1,15 +1,42 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { TutorSupport } from '@/types'
 import { useSchool } from '@/lib/school-context'
 
+// 교사기기 장기 미반납 기준일 (학교별로 달라지면 school_config 로 이동)
+const OVERDUE_DAYS = 30
+
 interface Stats {
   classroomCount: number
   pendingRepairs: number
+  inProgressRepairs: number
   activeRentals: number
+  returnRequests: number
   sharedDeviceCount: number
+  softwarePending: number
+  approvedSoftwareCount: number
+  overdueLoans: number
+  chromebookTotal: number
+  chromebookAssigned: number
+  studentCount: number
+}
+
+const EMPTY_STATS: Stats = {
+  classroomCount: 0,
+  pendingRepairs: 0,
+  inProgressRepairs: 0,
+  activeRentals: 0,
+  returnRequests: 0,
+  sharedDeviceCount: 0,
+  softwarePending: 0,
+  approvedSoftwareCount: 0,
+  overdueLoans: 0,
+  chromebookTotal: 0,
+  chromebookAssigned: 0,
+  studentCount: 0,
 }
 
 function toLocalDateString(date: Date) {
@@ -21,12 +48,7 @@ function toLocalDateString(date: Date) {
 
 export default function AdminDashboardPage() {
   const { schoolId, loading: schoolLoading } = useSchool()
-  const [stats, setStats] = useState<Stats>({
-    classroomCount: 0,
-    pendingRepairs: 0,
-    activeRentals: 0,
-    sharedDeviceCount: 0,
-  })
+  const [stats, setStats] = useState<Stats>(EMPTY_STATS)
   const [recentRepairs, setRecentRepairs] = useState<Array<{
     id: string
     status: string
@@ -41,18 +63,40 @@ export default function AdminDashboardPage() {
     async function load() {
       const supabase = createClient()
       const today = toLocalDateString(new Date())
+      const overdueBefore = toLocalDateString(
+        new Date(Date.now() - OVERDUE_DAYS * 24 * 60 * 60 * 1000)
+      )
+      const countOf = (table: string) =>
+        supabase.from(table).select('*', { count: 'exact', head: true }).eq('school_id', schoolId)
+
       const [
         { count: classroomCount },
         { count: pendingRepairs },
+        { count: inProgressRepairs },
         { count: activeRentals },
+        { count: returnRequests },
         { count: sharedDeviceCount },
+        { count: softwarePending },
+        { count: approvedSoftwareCount },
+        { count: overdueLoans },
+        { count: chromebookTotal },
+        { count: chromebookAssigned },
+        { count: studentCount },
         { data: repairs },
         { data: supports },
       ] = await Promise.all([
-        supabase.from('classrooms').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
-        supabase.from('repair_reports').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).neq('status', '처리 완료'),
-        supabase.from('rentals').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('status', '대여 중'),
-        supabase.from('shared_devices').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true),
+        countOf('classrooms'),
+        countOf('repair_reports').eq('status', '접수 대기'),
+        countOf('repair_reports').eq('status', '수리 중'),
+        countOf('rentals').eq('status', '대여 중'),
+        countOf('rentals').eq('status', '반납 요청 중'),
+        countOf('shared_devices').eq('is_active', true),
+        countOf('software_requests').eq('status', '처리중'),
+        countOf('approved_software').eq('is_active', true),
+        countOf('teacher_device_loans').eq('status', '대여중').lt('rent_date', overdueBefore),
+        countOf('chromebooks'),
+        countOf('chromebooks').not('student_id', 'is', null),
+        countOf('students'),
         supabase
           .from('repair_reports')
           .select('id, status, reported_at, classrooms(class_name), devices(device_type)')
@@ -66,11 +110,20 @@ export default function AdminDashboardPage() {
           .eq('support_date', today)
           .order('created_at', { ascending: true }),
       ])
+
       setStats({
         classroomCount: classroomCount ?? 0,
         pendingRepairs: pendingRepairs ?? 0,
+        inProgressRepairs: inProgressRepairs ?? 0,
         activeRentals: activeRentals ?? 0,
+        returnRequests: returnRequests ?? 0,
         sharedDeviceCount: sharedDeviceCount ?? 0,
+        softwarePending: softwarePending ?? 0,
+        approvedSoftwareCount: approvedSoftwareCount ?? 0,
+        overdueLoans: overdueLoans ?? 0,
+        chromebookTotal: chromebookTotal ?? 0,
+        chromebookAssigned: chromebookAssigned ?? 0,
+        studentCount: studentCount ?? 0,
       })
       setRecentRepairs((repairs as unknown as typeof recentRepairs) ?? [])
       setTodaySupports((supports as TutorSupport[]) ?? [])
@@ -78,11 +131,95 @@ export default function AdminDashboardPage() {
     load()
   }, [schoolId])
 
+  const unassignedChromebooks = Math.max(stats.chromebookTotal - stats.chromebookAssigned, 0)
+  const studentsWithoutDevice = Math.max(stats.studentCount - stats.chromebookAssigned, 0)
+
+  const todos = [
+    {
+      key: 'repairs',
+      href: '/admin/repairs',
+      icon: '🔧',
+      label: '접수 대기 고장',
+      count: stats.pendingRepairs,
+      tone: 'border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-900',
+    },
+    {
+      key: 'returns',
+      href: '/admin/rentals',
+      icon: '📦',
+      label: '반납 요청 승인',
+      count: stats.returnRequests,
+      tone: 'border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-900',
+    },
+    {
+      key: 'software',
+      href: '/admin/software',
+      icon: '🧩',
+      label: '소프트웨어 심의 대기',
+      count: stats.softwarePending,
+      tone: 'border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-900',
+    },
+    {
+      key: 'loans',
+      href: '/admin/teacher-rentals',
+      icon: '📝',
+      label: `${OVERDUE_DAYS}일 이상 미반납 교사기기`,
+      count: stats.overdueLoans,
+      tone: 'border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-900',
+    },
+  ].filter((t) => t.count > 0)
+
   const cards = [
-    { label: '등록된 학급', value: stats.classroomCount, icon: '🏫', color: 'text-blue-700 bg-white/70', card: 'border-blue-200 bg-blue-50/80' },
-    { label: '처리 중인 고장', value: stats.pendingRepairs, icon: '🔧', color: 'text-orange-700 bg-white/70', card: 'border-orange-200 bg-orange-50/80' },
-    { label: '현재 대여 중', value: stats.activeRentals, icon: '📦', color: 'text-emerald-700 bg-white/70', card: 'border-emerald-200 bg-emerald-50/80' },
-    { label: '공유 기기 종류', value: stats.sharedDeviceCount, icon: '💻', color: 'text-violet-700 bg-white/70', card: 'border-violet-200 bg-violet-50/80' },
+    {
+      label: '등록된 학급',
+      href: '/admin/classrooms',
+      value: String(stats.classroomCount),
+      icon: '🏫',
+      color: 'text-blue-700 bg-white/70',
+      card: 'border-blue-200 bg-blue-50/80',
+    },
+    {
+      label: '공유 기기 종류',
+      href: '/admin/devices',
+      value: String(stats.sharedDeviceCount),
+      icon: '💻',
+      color: 'text-violet-700 bg-white/70',
+      card: 'border-violet-200 bg-violet-50/80',
+    },
+    {
+      label: '현재 대여 중',
+      href: '/admin/rentals',
+      value: String(stats.activeRentals),
+      icon: '📦',
+      color: 'text-emerald-700 bg-white/70',
+      card: 'border-emerald-200 bg-emerald-50/80',
+    },
+    {
+      label: '크롬북 배정',
+      href: '/admin/chromebooks',
+      value: `${stats.chromebookAssigned} / ${stats.chromebookTotal}`,
+      sub: `미배정 ${unassignedChromebooks}대`,
+      icon: '🖥️',
+      color: 'text-cyan-700 bg-white/70',
+      card: 'border-cyan-200 bg-cyan-50/80',
+    },
+    {
+      label: '미지급 학생',
+      href: '/admin/chromebooks',
+      value: String(studentsWithoutDevice),
+      sub: `전체 학생 ${stats.studentCount}명`,
+      icon: '🧑‍🎓',
+      color: 'text-orange-700 bg-white/70',
+      card: 'border-orange-200 bg-orange-50/80',
+    },
+    {
+      label: '심의 완료 소프트웨어',
+      href: '/admin/software',
+      value: String(stats.approvedSoftwareCount),
+      icon: '🧩',
+      color: 'text-slate-700 bg-white/70',
+      card: 'border-slate-200 bg-slate-50',
+    },
   ]
 
   if (schoolLoading) {
@@ -93,15 +230,47 @@ export default function AdminDashboardPage() {
     <div>
       <h1 className="mb-6 text-2xl font-bold text-gray-900">관리자 대시보드</h1>
 
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-3 text-base font-semibold text-gray-900">오늘 처리할 일</h2>
+        {todos.length === 0 ? (
+          <p className="py-3 text-center text-sm text-gray-400">처리할 일이 없습니다.</p>
+        ) : (
+          <div className="space-y-2">
+            {todos.map((t) => (
+              <Link
+                key={t.key}
+                href={t.href}
+                className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold transition-colors ${t.tone}`}
+              >
+                <span className="text-base">{t.icon}</span>
+                <span className="flex-1">{t.label}</span>
+                <span className="rounded-full bg-white/80 px-2.5 py-0.5 text-xs font-bold">
+                  {t.count}건
+                </span>
+                <span aria-hidden className="text-xs opacity-60">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+        {stats.inProgressRepairs > 0 && (
+          <p className="mt-3 text-xs text-gray-500">현재 수리 중 {stats.inProgressRepairs}건</p>
+        )}
+      </div>
+
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-3">
         {cards.map((card) => (
-          <div key={card.label} className={`rounded-xl border p-5 shadow-sm ${card.card}`}>
+          <Link
+            key={card.label}
+            href={card.href}
+            className={`rounded-xl border p-5 shadow-sm transition-shadow hover:shadow-md ${card.card}`}
+          >
             <div className={`mb-3 inline-flex rounded-lg p-2.5 ${card.color}`}>
               <span className="text-xl">{card.icon}</span>
             </div>
             <p className="text-2xl font-bold text-gray-900">{card.value}</p>
             <p className="mt-0.5 text-sm text-gray-500">{card.label}</p>
-          </div>
+            {card.sub && <p className="mt-0.5 text-xs text-gray-400">{card.sub}</p>}
+          </Link>
         ))}
       </div>
 
