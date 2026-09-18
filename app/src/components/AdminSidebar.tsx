@@ -5,19 +5,44 @@ import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase'
 
-const navItems = [
-  { href: '/admin/dashboard', label: '대시보드', icon: '📊' },
-  { href: '/admin/classrooms', label: '학급 관리', icon: '🏫' },
-  { href: '/admin/repairs', label: '고장 신고 관리', icon: '🔧' },
-  { href: '/admin/device-types', label: '기기 종류 설정', icon: '⚙️' },
-  { href: '/admin/devices', label: '공유 기기 관리', icon: '💻' },
-  { href: '/admin/rentals', label: '전체 대여 현황', icon: '📋' },
-  { href: '/admin/teacher-rentals', label: '교사기기대여', icon: '📝' },
-  { href: '/admin/tutor', label: '튜터 수업 지원', icon: '📚' },
-  { href: '/admin/chromebooks', label: '크롬북 관리', icon: '🖥️' },
-  { href: '/admin/software', label: '소프트웨어 조회', icon: '🧩' },
-  { href: '/admin/audit-logs', label: '감사 로그', icon: '🗒️' },
-  { href: '/admin/settings', label: '학교 설정', icon: '🏫' },
+const navGroups = [
+  {
+    label: '운영 현황',
+    items: [
+      { href: '/admin/dashboard', label: '대시보드', icon: '📊' },
+    ],
+  },
+  {
+    label: '기기 자산',
+    items: [
+      { href: '/admin/devices', label: '공유 기기 관리', icon: '💻' },
+      { href: '/admin/device-types', label: '기기 종류 설정', icon: '🏷️' },
+      { href: '/admin/chromebooks', label: '크롬북 관리', icon: '🖥️' },
+    ],
+  },
+  {
+    label: '대여',
+    items: [
+      { href: '/admin/rentals', label: '전체 대여 현황', icon: '📋' },
+      { href: '/admin/teacher-rentals', label: '교사기기대여', icon: '📝' },
+    ],
+  },
+  {
+    label: '지원 요청',
+    items: [
+      { href: '/admin/repairs', label: '고장 신고 관리', icon: '🔧' },
+      { href: '/admin/tutor', label: '튜터 수업 지원', icon: '📚' },
+      { href: '/admin/software', label: '소프트웨어 조회', icon: '🧩' },
+    ],
+  },
+  {
+    label: '학교 운영',
+    items: [
+      { href: '/admin/classrooms', label: '학급 관리', icon: '🏫' },
+      { href: '/admin/settings', label: '학교 설정', icon: '⚙️' },
+      { href: '/admin/audit-logs', label: '감사 로그', icon: '🗒️' },
+    ],
+  },
 ]
 
 export function AdminSidebar() {
@@ -37,21 +62,28 @@ export function AdminSidebar() {
         <p className="mt-1 text-sm font-bold text-slate-950">스쿨디바이스</p>
       </div>
 
-      <nav className="flex-1 space-y-1.5 p-3">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all',
-              pathname === item.href
-                ? 'bg-[#eef3ff] text-[#2f4777] shadow-sm'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
-            )}
-          >
-            <span className="w-5 text-center">{item.icon}</span>
-            {item.label}
-          </Link>
+      <nav className="flex-1 space-y-5 overflow-y-auto p-3">
+        {navGroups.map((group) => (
+          <div key={group.label} className="space-y-1">
+            <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              {group.label}
+            </p>
+            {group.items.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all',
+                  pathname === item.href
+                    ? 'bg-[#eef3ff] text-[#2f4777] shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                )}
+              >
+                <span className="w-5 text-center">{item.icon}</span>
+                {item.label}
+              </Link>
+            ))}
+          </div>
         ))}
       </nav>
 
