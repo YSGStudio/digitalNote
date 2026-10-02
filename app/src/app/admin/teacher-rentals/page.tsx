@@ -335,56 +335,59 @@ export default function TeacherRentalsPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredLoans.map((loan) => (
-            <div key={loan.id} className="overflow-hidden rounded-xl bg-white shadow-sm">
-              <div className="flex items-center justify-between px-5 py-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700">대여</span>
-                    <span className="text-sm text-gray-500">{formatDate(loan.rent_date)}</span>
+            <div key={loan.id} className="flex flex-col overflow-hidden rounded-xl bg-white shadow-sm">
+              <div className="flex-1 px-5 pt-4 pb-3">
+                <div className="flex items-center justify-between gap-2">
+                  {loan.status === '대여중' ? (
+                    <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">대여중</span>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">반납완료</span>
+                  )}
+                  <button
+                    onClick={() => openDeleteModal(loan)}
+                    className="text-xs text-gray-400 hover:text-red-600"
+                  >
+                    삭제
+                  </button>
+                </div>
+                <p className="mt-2 truncate font-semibold text-gray-900">{loan.borrower_name}</p>
+                <p className="truncate text-sm text-gray-700">{deviceLabel(loan)}</p>
+                <p className="mt-1 line-clamp-2 text-xs text-gray-500">
+                  {[loan.model, loan.asset_no ? `자산 ${loan.asset_no}` : '', partsLabel(loan)]
+                    .filter(Boolean)
+                    .join(' · ') || '-'}
+                </p>
+
+                <dl className="mt-3 space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <dt className="text-gray-400">대여일</dt>
+                    <dd className="text-gray-700">{formatDate(loan.rent_date)}</dd>
                   </div>
-                  <p className="mt-1 font-semibold text-gray-900">
-                    {loan.borrower_name} · {deviceLabel(loan)}
-                  </p>
-                  <p className="mt-0.5 text-sm text-gray-500">
-                    {[loan.model, loan.asset_no ? `자산 ${loan.asset_no}` : '', partsLabel(loan)]
-                      .filter(Boolean)
-                      .join(' · ') || '-'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Link href={`/admin/teacher-rentals/${loan.id}/document`} target="_blank">
-                    <Button size="sm" variant="secondary">대여증</Button>
-                  </Link>
-                  <Button size="sm" variant="danger" onClick={() => openDeleteModal(loan)}>삭제</Button>
-                </div>
+                  <div className="flex justify-between">
+                    <dt className="text-gray-400">반납일</dt>
+                    <dd className="text-gray-700">{loan.status === '반납완료' ? formatDate(loan.return_date) : '-'}</dd>
+                  </div>
+                  {loan.status === '반납완료' && (
+                    <div className="flex justify-between">
+                      <dt className="text-gray-400">기기 상태</dt>
+                      <dd className="text-gray-700">
+                        {loan.condition === '기타' ? loan.condition_etc || '기타' : loan.condition}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
               </div>
 
-              <div className="border-t border-dashed border-gray-200 px-5 py-4">
-                {loan.status === '대여중' ? (
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-medium text-orange-700">
-                      대여중
-                    </span>
-                    <span className="text-sm text-gray-400">아직 반납되지 않았습니다.</span>
-                    <Button size="sm" onClick={() => openReturnModal(loan)}>반납 처리</Button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">반납</span>
-                        <span className="text-sm text-gray-500">{formatDate(loan.return_date)}</span>
-                      </div>
-                      <p className="mt-1 text-sm text-gray-600">
-                        기기 상태 {loan.condition === '기타' ? loan.condition_etc || '기타' : loan.condition}
-                      </p>
-                    </div>
-                    <Link href={`/admin/teacher-rentals/${loan.id}/document`} target="_blank">
-                      <Button size="sm" variant="secondary">반납증</Button>
-                    </Link>
-                  </div>
+              <div className="flex gap-2 border-t border-dashed border-gray-200 px-5 py-3">
+                <Link href={`/admin/teacher-rentals/${loan.id}/document`} target="_blank" className="flex-1">
+                  <Button size="sm" variant="secondary" className="w-full">
+                    {loan.status === '대여중' ? '대여증' : '반납증'}
+                  </Button>
+                </Link>
+                {loan.status === '대여중' && (
+                  <Button size="sm" className="flex-1" onClick={() => openReturnModal(loan)}>반납 처리</Button>
                 )}
               </div>
             </div>
